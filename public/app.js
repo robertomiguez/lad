@@ -58,6 +58,40 @@ const resolveBarcode = input => {
   if (!match) { result.textContent = "No matching product. Use the picker instead."; result.dataset.state = "error"; return; }
   product.value = match.value; result.textContent = `Selected ${match.textContent}`; result.dataset.state = "success";
 };
+const cameraScanFormats = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"];
+const stopCameraScan = item => {
+  const scanner = item?.querySelector("[data-barcode-scanner]");
+  if (!scanner) return;
+  cancelAnimationFrame(scanner.scanFrame || 0);
+  const video = scanner.querySelector("[data-barcode-video]");
+  const stream = video?.srcObject;
+  if (stream instanceof MediaStream) stream.getTracks().forEach(track => track.stop());
+  if (video) video.srcObject = null;
+  scanner.hidden = true; delete scanner.scanFrame;
+};
+const startCameraScan = async button => {
+  const item = button.closest(".line-item"), input = item?.querySelector("[data-barcode-input]"), result = item?.querySelector("[data-barcode-result]"), scanner = item?.querySelector("[data-barcode-scanner]"), video = scanner?.querySelector("[data-barcode-video]"), Detector = globalThis.BarcodeDetector;
+  if (!item || !(input instanceof HTMLInputElement) || !result || !scanner || !(video instanceof HTMLVideoElement)) return;
+  if (!Detector || !navigator.mediaDevices?.getUserMedia) { result.textContent = "Camera scanning is unavailable here. Scan with a hardware scanner or type the SKU."; result.dataset.state = "error"; return; }
+  document.querySelectorAll(".line-item").forEach(stopCameraScan); scanner.hidden = false;
+  try {
+    const supported = await Detector.getSupportedFormats?.() || cameraScanFormats;
+    const formats = cameraScanFormats.filter(format => supported.includes(format));
+    const detector = new Detector(formats.length ? { formats } : undefined);
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" } } });
+    await video.play();
+    const detect = async () => {
+      try {
+        const barcode = (await detector.detect(video))[0];
+        if (barcode?.rawValue) { input.value = barcode.rawValue; resolveBarcode(input); stopCameraScan(item); return; }
+      } catch {}
+      scanner.scanFrame = requestAnimationFrame(detect);
+    };
+    scanner.scanFrame = requestAnimationFrame(detect);
+  } catch {
+    stopCameraScan(item); result.textContent = "Camera access was unavailable. Scan with a hardware scanner or type the SKU."; result.dataset.state = "error";
+  }
+};
 const renderReports = async () => {
   const root = document.querySelector("#my-reports"); if (!root) return;
   thumbnailUrls.forEach(url => URL.revokeObjectURL(url)); thumbnailUrls = [];
@@ -124,7 +158,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   assignLineIds(form);
   form.addEventListener("submit", submitOfflineFirst, true);
   document.querySelector("#add-line-item")?.addEventListener("click", () => { const template = document.querySelector("#line-item-template"); const destination = document.querySelector("#line-items"); if (!(template instanceof HTMLTemplateElement) || !destination) return; destination.append(template.content.cloneNode(true)); assignLineIds(destination); applyProductCatalog(destination); });
-  document.body.addEventListener("click", event => { const target = event.target; if (!(target instanceof Element)) return; if (target.classList.contains("remove-line")) { const item = target.closest(".line-item"); if (item && document.querySelectorAll(".line-item").length > 1) item.remove(); } if (target.dataset.retry) requestSync(); });
+  document.body.addEventListener("click", event => {
+    const target = event.target; if (!(target instanceof Element)) return;
+    const scan = target.closest("[data-camera-scan]"); if (scan instanceof HTMLButtonElement) startCameraScan(scan);
+    const close = target.closest("[data-close-camera]"); if (close) stopCameraScan(close.closest(".line-item"));
+    if (target.classList.contains("remove-line")) { const item = target.closest(".line-item"); if (item && document.querySelectorAll(".line-item").length > 1) { stopCameraScan(item); item.remove(); } }
+    if (target.dataset.retry) requestSync();
+  });
   document.body.addEventListener("change", event => {
     const target = event.target;
     if (target instanceof HTMLInputElement && target.matches("[data-barcode-input]")) resolveBarcode(target);
@@ -137,5 +177,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   navigator.serviceWorker.register("/sw.js");
   navigator.serviceWorker.addEventListener("message", async event => { if (["REPORT_SYNCED", "REPORT_SYNC_ERROR", "REPORT_STATUSES_REFRESHED", "PHOTO_SYNCED", "PHOTO_SYNC_ERROR"].includes(event.data?.type)) await renderReports(); });
   addEventListener("online", () => { requestSync(); refreshStatuses(); }); setInterval(refreshStatuses, 15_000);
+  addEventListener("pagehide", () => document.querySelectorAll(".line-item").forEach(stopCameraScan));
   await refreshProductCatalog(); await renderReports(); await refreshStatuses();
 });
