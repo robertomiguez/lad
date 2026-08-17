@@ -1,9 +1,10 @@
 const damageDbName = "damage-reporting-poc";
 const openDamageDb = () => new Promise((resolve, reject) => {
-  const request = indexedDB.open(damageDbName, 2);
+  const request = indexedDB.open(damageDbName, 3);
   request.onupgradeneeded = () => {
     if (!request.result.objectStoreNames.contains("reports")) request.result.createObjectStore("reports", { keyPath: "id" });
     if (!request.result.objectStoreNames.contains("photos")) request.result.createObjectStore("photos", { keyPath: "id" });
+    if (!request.result.objectStoreNames.contains("products")) request.result.createObjectStore("products", { keyPath: "id" });
   };
   request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
 });
@@ -12,11 +13,41 @@ const saveLocal = report => withStore("reports", "readwrite", store => store.put
 const allLocal = () => withStore("reports", "readonly", store => store.getAll());
 const savePhoto = photo => withStore("photos", "readwrite", store => store.put(photo));
 const allPhotos = () => withStore("photos", "readonly", store => store.getAll());
+const saveProduct = product => withStore("products", "readwrite", store => store.put(product));
+const allProducts = () => withStore("products", "readonly", store => store.getAll());
+const clearProducts = () => withStore("products", "readwrite", store => store.clear());
 const makeId = () => crypto.randomUUID();
 const formatStatus = status => ({ draft: "Draft", pending_sync: "Pending Sync", synced: "Updating status", submitted: "With Regional Manager", pending_regional: "With Regional Manager", pending_quality: "With Quality Management", approved: "Credit Note Processing", credit_note_processing: "Credit Note Processing", completed: "Completed", rejected: "Rejected", sync_error: "Needs attention — retrying", erp_error: "Needs attention — retrying" })[status] || "Updating status";
 const formatPhotoStatus = status => ({ pending: "Photo pending", uploaded: "Photo uploaded", failed: "Photo needs attention — retrying" })[status] || "Photo updating";
 const formatRole = role => ({ regional_manager: "Regional Manager", quality: "Quality Management" })[role] || "the fallback approver role";
 let thumbnailUrls = [];
+let productCatalog = [];
+const sortProducts = products => [...products].sort((left, right) => left.sku.localeCompare(right.sku));
+const populateProductSelect = (select, products) => {
+  const selected = select.value;
+  select.replaceChildren(new Option("Choose product", ""));
+  for (const product of products) {
+    const option = new Option(`${product.sku} — ${product.name}`, product.id);
+    option.dataset.sku = product.sku;
+    select.add(option);
+  }
+  select.value = products.some(product => product.id === selected) ? selected : "";
+};
+const applyProductCatalog = root => root.querySelectorAll("[name=product_id]").forEach(select => {
+  if (select instanceof HTMLSelectElement && productCatalog.length) populateProductSelect(select, productCatalog);
+});
+const refreshProductCatalog = async () => {
+  const cached = await allProducts();
+  if (cached.length) { productCatalog = sortProducts(cached); applyProductCatalog(document); }
+  try {
+    const response = await fetch("/api/products", { credentials: "same-origin" });
+    const products = await response.json();
+    if (!response.ok || !Array.isArray(products) || products.some(product => !product?.id || !product?.sku || !product?.name)) return;
+    productCatalog = sortProducts(products);
+    await clearProducts(); await Promise.all(productCatalog.map(saveProduct));
+    applyProductCatalog(document);
+  } catch {}
+};
 const normalizedSku = value => value.trim().replaceAll(/\s+/g, "").toUpperCase();
 const resolveBarcode = input => {
   const item = input.closest(".line-item"); if (!item) return;
@@ -92,7 +123,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   form.elements.report_id.value = makeId(); form.elements.report_date.value = new Date().toISOString().slice(0, 10);
   assignLineIds(form);
   form.addEventListener("submit", submitOfflineFirst, true);
-  document.querySelector("#add-line-item")?.addEventListener("click", () => { const template = document.querySelector("#line-item-template"); const destination = document.querySelector("#line-items"); if (!(template instanceof HTMLTemplateElement) || !destination) return; destination.append(template.content.cloneNode(true)); assignLineIds(destination); });
+  document.querySelector("#add-line-item")?.addEventListener("click", () => { const template = document.querySelector("#line-item-template"); const destination = document.querySelector("#line-items"); if (!(template instanceof HTMLTemplateElement) || !destination) return; destination.append(template.content.cloneNode(true)); assignLineIds(destination); applyProductCatalog(destination); });
   document.body.addEventListener("click", event => { const target = event.target; if (!(target instanceof Element)) return; if (target.classList.contains("remove-line")) { const item = target.closest(".line-item"); if (item && document.querySelectorAll(".line-item").length > 1) item.remove(); } if (target.dataset.retry) requestSync(); });
   document.body.addEventListener("change", event => {
     const target = event.target;
@@ -106,5 +137,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   navigator.serviceWorker.register("/sw.js");
   navigator.serviceWorker.addEventListener("message", async event => { if (["REPORT_SYNCED", "REPORT_SYNC_ERROR", "REPORT_STATUSES_REFRESHED", "PHOTO_SYNCED", "PHOTO_SYNC_ERROR"].includes(event.data?.type)) await renderReports(); });
   addEventListener("online", () => { requestSync(); refreshStatuses(); }); setInterval(refreshStatuses, 15_000);
-  await renderReports(); await refreshStatuses();
+  await refreshProductCatalog(); await renderReports(); await refreshStatuses();
 });
