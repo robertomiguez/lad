@@ -1,0 +1,2 @@
+# Copy to .dev.vars for local development. Do not commit .dev.vars.
+JWT_SECRET=replace-with-a-long-random-local-secret

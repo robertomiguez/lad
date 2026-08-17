@@ -1,0 +1,31 @@
+# Dependencies and generated build output
+node_modules/
+dist/
+.test-build/
+coverage/
+
+# Wrangler/Miniflare local state, logs, and generated configuration
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Never commit environment files or local credentials
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# local files that are not needed in the repository
+*.docx
+*.pptx
+/img

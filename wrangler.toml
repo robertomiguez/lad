@@ -1,0 +1,53 @@
+name = "digital-damage-reporting"
+main = "src/index.ts"
+compatibility_date = "2026-08-16"
+# The public demo is served from the account's workers.dev subdomain.
+workers_dev = true
+# This POC has a Durable Object; version preview URLs are not needed for the demo.
+preview_urls = false
+
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "damage-reporting-prod"
+database_id = "3ec0758b-a05c-4794-9056-882398a2694e"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "IDEMPOTENCY"
+id = "b8defcf73d5e405585be38ad0246364b"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "damage-reporting-photos-prod"
+
+[[queues.producers]]
+binding = "ERP_WRITE_QUEUE"
+queue = "erp-write-queue-prod"
+
+[[queues.consumers]]
+queue = "erp-write-queue-prod"
+max_batch_size = 10
+max_retries = 3
+
+[[durable_objects.bindings]]
+name = "REPORT_DO"
+class_name = "ReportWorkflow"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ReportWorkflow"]
+
+[vars]
+# Non-secret deployed defaults belong here. JWT_SECRET belongs in .dev.vars locally
+# and in `wrangler secret put JWT_SECRET` for deployed environments.
+ENVIRONMENT = "development"
+# Interview/demo assumption: false routes even sub-CHF-200 reports to regional approval.
+AUTO_APPROVE_BELOW_REGIONAL = "true"
+# POC demo duration. Production policy remains three working days.
+ESCALATION_DEMO_DELAY_SECONDS = "120"
+ERP_SIMULATED_DELAY_MS = "100"
+ERP_FAILURE_RATE = "0"
+ERP_MAX_RETRIES = "3"
