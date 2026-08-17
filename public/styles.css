@@ -43,12 +43,12 @@ h2 { margin-bottom: .9rem; font-size: 1.18rem; letter-spacing: -.02em; }
 .capture-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .75fr); gap: 1.25rem; align-items: start; }
 .form-card { min-width: 0; padding: 1.2rem; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
-.line-item { display: grid; grid-template-columns: minmax(120px, .9fr) minmax(0, 1.3fr) minmax(76px, .62fr) minmax(112px, .86fr) minmax(135px, 1fr) auto; gap: .65rem; align-items: end; min-width: 0; margin: .9rem 0; padding: 1rem; border: 1px solid #d8e4f1; border-radius: 10px; background: #f9fbfe; }
+.line-item { display: grid; grid-template-columns: minmax(120px, .9fr) minmax(0, 1.3fr) minmax(76px, .62fr) minmax(112px, .86fr) minmax(135px, 1fr) auto; gap: .65rem; align-items: start; min-width: 0; margin: .9rem 0; padding: 1rem; border: 1px solid #d8e4f1; border-radius: 10px; background: #f9fbfe; }
 .line-item > * { min-width: 0; }
 .barcode-result { min-height: 1.1rem; color: var(--muted); font-size: .75rem; font-weight: 600; line-height: 1.2; }
 .barcode-result[data-state="success"] { color: var(--success); }
 .barcode-result[data-state="error"] { color: var(--danger); }
-.line-item .remove-line { align-self: end; padding: .68rem .8rem; color: var(--danger); background: #fff0f2; white-space: nowrap; }
+.line-item .remove-line { align-self: start; margin-top: 1.7rem; padding: .68rem .8rem; color: var(--danger); background: #fff0f2; white-space: nowrap; }
 .line-item .remove-line:hover { background: #ffdfe4; box-shadow: none; }
 .form-actions, .approval-actions, .header-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; }
 .button-secondary, .back-button { color: var(--blue); background: #eaf2ff; }
@@ -99,6 +99,7 @@ mark { display: inline-block; width: fit-content; border-radius: 99px; padding: 
   .login-aside { min-height: 280px; }
   .line-item { grid-template-columns: 1fr 1fr; }
   .line-item label:first-of-type, .line-item label:nth-of-type(2), .line-item label:nth-of-type(5) { grid-column: 1 / -1; }
+  .line-item .remove-line { margin-top: 0; }
   .approval-card { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
