@@ -17,6 +17,16 @@ const formatStatus = status => ({ draft: "Draft", pending_sync: "Pending Sync", 
 const formatPhotoStatus = status => ({ pending: "Photo pending", uploaded: "Photo uploaded", failed: "Photo needs attention — retrying" })[status] || "Photo updating";
 const formatRole = role => ({ regional_manager: "Regional Manager", quality: "Quality Management" })[role] || "the fallback approver role";
 let thumbnailUrls = [];
+const normalizedSku = value => value.trim().replaceAll(/\s+/g, "").toUpperCase();
+const resolveBarcode = input => {
+  const item = input.closest(".line-item"); if (!item) return;
+  const result = item.querySelector("[data-barcode-result]"), product = item.querySelector("[name=product_id]"), sku = normalizedSku(input.value);
+  if (!result || !(product instanceof HTMLSelectElement)) return;
+  if (!sku) { result.textContent = ""; delete result.dataset.state; return; }
+  const match = [...product.options].find(option => normalizedSku(option.dataset.sku || "") === sku);
+  if (!match) { result.textContent = "No matching product. Use the picker instead."; result.dataset.state = "error"; return; }
+  product.value = match.value; result.textContent = `Selected ${match.textContent}`; result.dataset.state = "success";
+};
 const renderReports = async () => {
   const root = document.querySelector("#my-reports"); if (!root) return;
   thumbnailUrls.forEach(url => URL.revokeObjectURL(url)); thumbnailUrls = [];
@@ -84,6 +94,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   form.addEventListener("submit", submitOfflineFirst, true);
   document.querySelector("#add-line-item")?.addEventListener("click", () => { const template = document.querySelector("#line-item-template"); const destination = document.querySelector("#line-items"); if (!(template instanceof HTMLTemplateElement) || !destination) return; destination.append(template.content.cloneNode(true)); assignLineIds(destination); });
   document.body.addEventListener("click", event => { const target = event.target; if (!(target instanceof Element)) return; if (target.classList.contains("remove-line")) { const item = target.closest(".line-item"); if (item && document.querySelectorAll(".line-item").length > 1) item.remove(); } if (target.dataset.retry) requestSync(); });
+  document.body.addEventListener("change", event => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.matches("[data-barcode-input]")) resolveBarcode(target);
+    if (target instanceof HTMLSelectElement && target.matches("[name=product_id]")) {
+      const result = target.closest(".line-item")?.querySelector("[data-barcode-result]");
+      if (result) { result.textContent = ""; delete result.dataset.state; }
+    }
+  });
+  document.body.addEventListener("keydown", event => { const target = event.target; if (event.key === "Enter" && target instanceof HTMLInputElement && target.matches("[data-barcode-input]")) { event.preventDefault(); resolveBarcode(target); } });
   navigator.serviceWorker.register("/sw.js");
   navigator.serviceWorker.addEventListener("message", async event => { if (["REPORT_SYNCED", "REPORT_SYNC_ERROR", "REPORT_STATUSES_REFRESHED", "PHOTO_SYNCED", "PHOTO_SYNC_ERROR"].includes(event.data?.type)) await renderReports(); });
   addEventListener("online", () => { requestSync(); refreshStatuses(); }); setInterval(refreshStatuses, 15_000);

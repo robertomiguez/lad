@@ -33,15 +33,16 @@ async function login(request: Request, env: Env) {
   return jsonRequest ? Response.json({ token, user }, { headers }) : new Response(null, { status: 303, headers: { ...headers, location: destination } });
 }
 async function products(env: Env) { return (await env.DB.prepare("SELECT id, sku, name FROM products ORDER BY sku").all<Product>()).results; }
+const productOptions = (products: Product[]) => products.map(product => `<option value="${escape(product.id)}" data-sku="${escape(product.sku)}">${escape(product.sku)} — ${escape(product.name)}</option>`).join("");
 async function lineItemRow(env: Env) {
-  const options = (await products(env)).map(p => `<option value="${escape(p.id)}">${escape(p.sku)} — ${escape(p.name)}</option>`).join("");
+  const options = productOptions(await products(env));
   return html(lineItemMarkup(options));
 }
-const lineItemMarkup = (options: string) => `<fieldset class="line-item"><input type="hidden" name="line_item_id" data-line-id><label>Product <select name="product_id" required><option value="">Choose product</option>${options}</select></label><label>Quantity <input name="quantity" type="number" min="1" step="1" required></label><label>Reason <select name="reason_code" required><option value="">Choose reason</option><option value="damaged">Damaged</option><option value="incorrect_delivery">Incorrect delivery</option><option value="expired">Expired</option></select></label><label>Photo <input name="photo" type="file" accept="image/*"></label><button type="button" class="remove-line">Remove</button></fieldset>`;
+const lineItemMarkup = (options: string) => `<fieldset class="line-item"><input type="hidden" name="line_item_id" data-line-id><label>Barcode / SKU <input name="barcode" data-barcode-input type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Scan or type SKU"><span class="barcode-result" data-barcode-result aria-live="polite"></span></label><label>Product <select name="product_id" required><option value="">Choose product</option>${options}</select></label><label>Quantity <input name="quantity" type="number" min="1" step="1" required></label><label>Reason <select name="reason_code" required><option value="">Choose reason</option><option value="damaged">Damaged</option><option value="incorrect_delivery">Incorrect delivery</option><option value="expired">Expired</option></select></label><label>Photo <input name="photo" type="file" accept="image/*"></label><button type="button" class="remove-line">Remove</button></fieldset>`;
 async function appPage(env: Env, claims: Claims) {
   if (claims.role !== "store") return new Response(null, { status: 303, headers: { location: "/approvals" } });
   const user = await env.DB.prepare("SELECT u.name, s.name AS store_name FROM users u JOIN stores s ON s.id = u.store_id WHERE u.id = ?").bind(claims.user_id).first<{ name: string; store_name: string }>();
-  const options = (await products(env)).map(p => `<option value="${escape(p.id)}">${escape(p.sku)} — ${escape(p.name)}</option>`).join("");
+  const options = productOptions(await products(env));
   const item = lineItemMarkup(options);
   // The capture shell is complete in the document so a cached /app can create a
   // report after a fresh offline reload. htmx remains in use for online approval UI.
