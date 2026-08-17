@@ -32,7 +32,7 @@ async function login(request: Request, env: Env) {
   const destination = user.role === "store" ? "/app" : "/approvals";
   return jsonRequest ? Response.json({ token, user }, { headers }) : new Response(null, { status: 303, headers: { ...headers, location: destination } });
 }
-async function products(env: Env) { return (await env.DB.prepare("SELECT id, sku, name FROM products ORDER BY sku").all<Product>()).results; }
+async function products(env: Env) { return (await env.DB.prepare("SELECT id, sku, name FROM products WHERE active = 1 ORDER BY sku").all<Product>()).results; }
 const productOptions = (products: Product[]) => products.map(product => `<option value="${escape(product.id)}" data-sku="${escape(product.sku)}">${escape(product.sku)} — ${escape(product.name)}</option>`).join("");
 async function lineItemRow(env: Env) {
   const options = productOptions(await products(env));
@@ -224,6 +224,7 @@ export default {
     if (request.method === "GET" && pathname === "/approvals") return approvalsPage(claims);
     if (request.method === "GET" && pathname === "/ops") return opsPage(claims);
     if (request.method === "GET" && pathname === "/fragments/line-item" && requireRole(claims, ["store"])) return lineItemRow(env);
+    if (request.method === "GET" && pathname === "/api/products" && requireRole(claims, ["store"])) return Response.json(await products(env), { headers: { "cache-control": "no-store" } });
     if (request.method === "GET" && pathname === "/api/reports" && requireRole(claims, ["store"])) return myReports(env, claims);
     if (request.method === "GET" && pathname === "/api/reports/statuses") return reportStatuses(env, claims);
     if (request.method === "GET" && pathname === "/fragments/approvals") return approvalsFragment(env, claims);
