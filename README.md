@@ -49,7 +49,7 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 | `npm run db:simulate:deactivate-product:local` | Make `SKU-200` inactive for the offline-validation demo. |
 | `npm run db:simulate:reactivate-product:local` | Restore `SKU-200`. |
 | `npm run typecheck` | Type-check the Worker. |
-| `npm test` | Run the CHF routing policy tests. |
+| `npm test` | Run the workflow-policy and barcode/SKU matching tests. |
 | `npx wrangler deploy --dry-run` | Bundle and validate the deploy configuration without deploying. |
 
 ## Sign in and use the app
@@ -69,6 +69,18 @@ After choosing Zoe Store, `/app` opens the capture form.
 3. Select **Save report**.
 
 The browser creates the report UUID before sending anything and saves the complete report to IndexedDB first. The report list is therefore the source of immediate feedback, whether online or offline.
+
+### Barcode and SKU capture
+
+Each damage-item row supports three equivalent ways to select a product:
+
+1. Scan a barcode with a keyboard-wedge handheld scanner. The scanner enters the SKU and sends Enter; the matching product is selected automatically.
+2. Select **Scan** to use the device camera, grant permission, then point it at the barcode. The POC requests the rear camera and supports common retail formats (EAN, UPC, Code 128, and Code 39).
+3. Type the SKU manually or use the **Product** picker.
+
+The product/SKU catalogue is cached in IndexedDB after an online visit, so hardware or camera scans can still resolve products after a page reload while offline. The browser's native camera barcode API is experimental and not available in every browser; when it is unavailable or camera permission is denied, the report remains fully usable with a handheld scanner, typed SKU, or product picker.
+
+For a quick demo, scan or type `SKU-100`, then verify the green **Selected SKU-100** message and the populated product picker. Typing an unknown code produces a clear inline message and does not block manual selection.
 
 ## Demonstration flows
 
