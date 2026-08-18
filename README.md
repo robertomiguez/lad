@@ -74,13 +74,21 @@ The browser creates the report UUID before sending anything and saves the comple
 
 Each damage-item row supports three equivalent ways to select a product:
 
-1. Scan a barcode with a keyboard-wedge handheld scanner. The scanner enters the SKU and sends Enter; the matching product is selected automatically.
+1. Scan a physical barcode with a keyboard-wedge handheld scanner. The scanner enters the EAN/UPC and sends Enter; the mapped product is selected automatically.
 2. Select **Scan** to use the device camera, grant permission, then point it at the barcode. The POC requests the rear camera and supports common retail formats (EAN, UPC, Code 128, and Code 39).
 3. Type the SKU manually or use the **Product** picker.
 
-The product/SKU catalogue is cached in IndexedDB after an online visit, so hardware or camera scans can still resolve products after a page reload while offline. The browser's native camera barcode API is experimental and not available in every browser; when it is unavailable or camera permission is denied, the report remains fully usable with a handheld scanner, typed SKU, or product picker.
+The product catalogue stores both the internal SKU and an optional physical barcode. It is cached in IndexedDB after an online visit, so hardware or camera scans can still resolve products after a page reload while offline. The browser's native camera barcode API is experimental and not available in every browser; when it is unavailable or camera permission is denied, the report remains fully usable with a handheld scanner, typed SKU, or product picker.
 
-For a quick demo, scan or type `SKU-100`, then verify the green **Selected SKU-100** message and the populated product picker. Typing an unknown code produces a clear inline message and does not block manual selection.
+### Quick barcode test
+
+After applying migrations and seeding the database, sign in as **Zoe Store**, open `/app`, and either use **Scan** or type:
+
+```text
+7612345678908
+```
+
+This seeded EAN maps to `SKU-100` (Sparkling Water 500ml). The app should show a green **Selected SKU-100** message and select the product automatically. The seeded EANs are demo data; replace `products.barcode` with the actual barcode printed on each product. Typing an unknown code produces a clear inline message and does not block manual selection.
 
 ## Demonstration flows
 

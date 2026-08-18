@@ -1,4 +1,4 @@
-import { normalizeSku, skuMatches } from "./barcode.js";
+import { normalizeSku, productCodeMatches } from "./barcode.js";
 
 const damageDbName = "damage-reporting-poc";
 const openDamageDb = () => new Promise((resolve, reject) => {
@@ -30,7 +30,7 @@ const populateProductSelect = (select, products) => {
   select.replaceChildren(new Option("Choose product", ""));
   for (const product of products) {
     const option = new Option(`${product.sku} — ${product.name}`, product.id);
-    option.dataset.sku = product.sku;
+    option.dataset.sku = product.sku; option.dataset.barcode = product.barcode || "";
     select.add(option);
   }
   select.value = products.some(product => product.id === selected) ? selected : "";
@@ -55,7 +55,7 @@ const resolveBarcode = input => {
   const result = item.querySelector("[data-barcode-result]"), product = item.querySelector("[name=product_id]"), sku = normalizeSku(input.value);
   if (!result || !(product instanceof HTMLSelectElement)) return;
   if (!sku) { result.textContent = ""; delete result.dataset.state; return; }
-  const match = [...product.options].find(option => skuMatches(option.dataset.sku, sku));
+  const match = [...product.options].find(option => productCodeMatches(option.dataset.sku, sku) || productCodeMatches(option.dataset.barcode, sku));
   if (!match) { result.textContent = "No matching product. Use the picker instead."; result.dataset.state = "error"; return; }
   product.value = match.value; result.textContent = `Selected ${match.textContent}`; result.dataset.state = "success";
 };

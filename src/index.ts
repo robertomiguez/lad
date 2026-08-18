@@ -5,7 +5,7 @@ import { logError, logTransition, RETRY_LIMITS } from "./lib/observability";
 
 export interface Env { DB: D1Database; IDEMPOTENCY: KVNamespace; PHOTOS: R2Bucket; ERP_WRITE_QUEUE: Queue; REPORT_DO: DurableObjectNamespace; JWT_SECRET: string; ENVIRONMENT: string; AUTO_APPROVE_BELOW_REGIONAL?: string; ESCALATION_DEMO_DELAY_SECONDS?: string; ERP_SIMULATED_DELAY_MS?: string; ERP_FAILURE_RATE?: string; ERP_MAX_RETRIES?: string; }
 type DbUser = { id: string; name: string; role: Claims["role"]; store_id: string | null };
-type Product = { id: string; sku: string; name: string };
+type Product = { id: string; sku: string; barcode: string | null; name: string };
 type Report = { id: string; status: string; total_amount: number; created_at: string };
 type Submission = { id: string; storeId: string; reporterId: string; reportDate: string; totalAmountCents: number; items: { id: string; productId: string; quantity: number; reasonCode: string; photoId?: string }[] };
 const html = (body: string, status = 200, headers: HeadersInit = {}) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8", ...headers } });
@@ -32,8 +32,8 @@ async function login(request: Request, env: Env) {
   const destination = user.role === "store" ? "/app" : "/approvals";
   return jsonRequest ? Response.json({ token, user }, { headers }) : new Response(null, { status: 303, headers: { ...headers, location: destination } });
 }
-async function products(env: Env) { return (await env.DB.prepare("SELECT id, sku, name FROM products WHERE active = 1 ORDER BY sku").all<Product>()).results; }
-const productOptions = (products: Product[]) => products.map(product => `<option value="${escape(product.id)}" data-sku="${escape(product.sku)}">${escape(product.sku)} — ${escape(product.name)}</option>`).join("");
+async function products(env: Env) { return (await env.DB.prepare("SELECT id, sku, barcode, name FROM products WHERE active = 1 ORDER BY sku").all<Product>()).results; }
+const productOptions = (products: Product[]) => products.map(product => `<option value="${escape(product.id)}" data-sku="${escape(product.sku)}" data-barcode="${escape(product.barcode ?? "")}">${escape(product.sku)} — ${escape(product.name)}</option>`).join("");
 async function lineItemRow(env: Env) {
   const options = productOptions(await products(env));
   return html(lineItemMarkup(options));
