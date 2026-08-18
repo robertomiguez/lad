@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply damage-reporting --local",
-    "db:seed:local": "wrangler d1 execute damage-reporting --local --file=seed/seed.sql",
-    "db:simulate:deactivate-product:local": "wrangler d1 execute damage-reporting --local --file=seed/deactivate-product.sql",
-    "db:simulate:reactivate-product:local": "wrangler d1 execute damage-reporting --local --file=seed/reactivate-product.sql",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:seed:local": "wrangler d1 execute DB --local --file=seed/seed.sql",
+    "db:simulate:deactivate-product:local": "wrangler d1 execute DB --local --file=seed/deactivate-product.sql",
+    "db:simulate:reactivate-product:local": "wrangler d1 execute DB --local --file=seed/reactivate-product.sql",
     "test": "tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir .test-build src/lib/workflow-policy.ts && node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
