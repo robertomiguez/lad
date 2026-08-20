@@ -11,11 +11,18 @@
     "db:simulate:deactivate-product:local": "wrangler d1 execute DB --local --file=seed/deactivate-product.sql",
     "db:simulate:reactivate-product:local": "wrangler d1 execute DB --local --file=seed/reactivate-product.sql",
     "test": "tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --rootDir src --outDir .test-build src/lib/workflow-policy.ts src/domain/roles.ts && node --test test/*.test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260811.1",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1",
+    "prettier": "^3.9.6",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.67.0",
     "wrangler": "^4.28.1"
   }
 }

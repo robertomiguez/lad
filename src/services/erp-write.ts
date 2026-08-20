@@ -6,7 +6,10 @@ import type { Env } from "../types";
 
 export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
   for (const message of batch.messages) {
-    const { reportId, correlationId = crypto.randomUUID() } = message.body as { reportId?: string; correlationId?: string };
+    const { reportId, correlationId = crypto.randomUUID() } = message.body as {
+      reportId?: string;
+      correlationId?: string;
+    };
     if (!reportId) {
       message.ack();
       continue;
@@ -17,9 +20,17 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
     const failPermanently = async (reason: string) => {
       await env.DB.batch([
         creditNotes.markFailed(reportId),
-        reports.markErpErrorStatement(reportId, new Date().toISOString())
+        reports.markErpErrorStatement(reportId, new Date().toISOString()),
       ]);
-      logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.creditNoteProcessing, toStatus: REPORT_STATUS.erpError, actor: "system", component: "erp-queue", reason });
+      logTransition({
+        reportId,
+        correlationId,
+        fromStatus: REPORT_STATUS.creditNoteProcessing,
+        toStatus: REPORT_STATUS.erpError,
+        actor: "system",
+        component: "erp-queue",
+        reason,
+      });
       message.ack();
     };
     try {
@@ -33,16 +44,25 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
         const creditNoteId = crypto.randomUUID();
         await env.DB.batch([
           creditNotes.createPending(creditNoteId, reportId),
-          reports.markCreditNoteProcessingStatement(reportId, new Date().toISOString())
+          reports.markCreditNoteProcessingStatement(reportId, new Date().toISOString()),
         ]);
-        logTransition({ reportId, correlationId, fromStatus: report.status, toStatus: REPORT_STATUS.creditNoteProcessing, actor: "system", component: "erp-queue" });
+        logTransition({
+          reportId,
+          correlationId,
+          fromStatus: report.status,
+          toStatus: REPORT_STATUS.creditNoteProcessing,
+          actor: "system",
+          component: "erp-queue",
+        });
         creditNote = await creditNotes.findByReportId(reportId);
       }
       if (!creditNote || creditNote.status === "created" || creditNote.status === "failed") {
         message.ack();
         continue;
       }
-      await new Promise<void>(resolve => setTimeout(resolve, Math.max(0, Number(env.ERP_SIMULATED_DELAY_MS ?? "100"))));
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.max(0, Number(env.ERP_SIMULATED_DELAY_MS ?? "100"))),
+      );
       const shouldFail = Math.random() < Math.min(1, Math.max(0, Number(env.ERP_FAILURE_RATE ?? "0")));
       if (shouldFail) {
         if (message.attempts >= maxRetries) {
@@ -54,9 +74,16 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
       }
       await env.DB.batch([
         creditNotes.markCreated(reportId, `ERP-${reportId}`),
-        reports.markCompletedStatement(reportId, new Date().toISOString())
+        reports.markCompletedStatement(reportId, new Date().toISOString()),
       ]);
-      logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.creditNoteProcessing, toStatus: REPORT_STATUS.completed, actor: "system", component: "erp-queue" });
+      logTransition({
+        reportId,
+        correlationId,
+        fromStatus: REPORT_STATUS.creditNoteProcessing,
+        toStatus: REPORT_STATUS.completed,
+        actor: "system",
+        component: "erp-queue",
+      });
       message.ack();
     } catch {
       logError(correlationId, "erp-queue", "queue_consumer_error", reportId);

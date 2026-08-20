@@ -6,16 +6,16 @@ It is deliberately a POC: seeded users replace real SSO, D1 replaces the ERP, an
 
 ## What is included
 
-| Concern | POC implementation |
-| --- | --- |
-| Store capture | Browser form, IndexedDB and a Service Worker outbox |
-| API and UI | Cloudflare Worker, HTML-first pages, htmx approval actions |
-| Approval | One Durable Object state machine per report |
-| Escalation | Durable Object alarm |
-| Mock ERP | D1 reports, products and credit notes |
+| Concern              | POC implementation                                                      |
+| -------------------- | ----------------------------------------------------------------------- |
+| Store capture        | Browser form, IndexedDB and a Service Worker outbox                     |
+| API and UI           | Cloudflare Worker, HTML-first pages, htmx approval actions              |
+| Approval             | One Durable Object state machine per report                             |
+| Escalation           | Durable Object alarm                                                    |
+| Mock ERP             | D1 reports, products and credit notes                                   |
 | Duplicate prevention | Client UUID, KV, D1 idempotency table and unique credit note constraint |
-| Photos | Optional R2 upload independent from report sync |
-| ERP write | Retryable Cloudflare Queue consumer |
+| Photos               | Optional R2 upload independent from report sync                         |
+| ERP write            | Retryable Cloudflare Queue consumer                                     |
 
 ## Prerequisites
 
@@ -41,26 +41,29 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 
 ### Useful commands
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start the local Worker. |
-| `npm run db:migrate:local` | Apply D1 migrations locally. |
-| `npm run db:seed:local` | Add the demo stores, users and products. |
-| `npm run db:simulate:deactivate-product:local` | Make `SKU-200` inactive for the offline-validation demo. |
-| `npm run db:simulate:reactivate-product:local` | Restore `SKU-200`. |
-| `npm run typecheck` | Type-check the Worker. |
-| `npm test` | Run the workflow-policy and barcode/SKU matching tests. |
-| `npx wrangler deploy --dry-run` | Bundle and validate the deploy configuration without deploying. |
+| Command                                        | Purpose                                                         |
+| ---------------------------------------------- | --------------------------------------------------------------- |
+| `npm run dev`                                  | Start the local Worker.                                         |
+| `npm run db:migrate:local`                     | Apply D1 migrations locally.                                    |
+| `npm run db:seed:local`                        | Add the demo stores, users and products.                        |
+| `npm run db:simulate:deactivate-product:local` | Make `SKU-200` inactive for the offline-validation demo.        |
+| `npm run db:simulate:reactivate-product:local` | Restore `SKU-200`.                                              |
+| `npm run typecheck`                            | Type-check the Worker.                                          |
+| `npm test`                                     | Run the workflow-policy and barcode/SKU matching tests.         |
+| `npm run lint`                                 | Lint Worker TypeScript under `src/`.                            |
+| `npm run format:check`                         | Verify Prettier formatting across the repository.               |
+| `npm run format`                               | Apply Prettier formatting across the repository.                |
+| `npx wrangler deploy --dry-run`                | Bundle and validate the deploy configuration without deploying. |
 
 ## Sign in and use the app
 
 `/login` presents three seeded users. There are no passwords in this POC.
 
-| User | Role | Use it for |
-| --- | --- | --- |
-| Zoe Store | Store user | Create reports and view their business status. |
+| User          | Role             | Use it for                                              |
+| ------------- | ---------------- | ------------------------------------------------------- |
+| Zoe Store     | Store user       | Create reports and view their business status.          |
 | Rene Regional | Regional manager | Approve or reject Zurich reports at the regional stage. |
-| Quinn Quality | Quality | Approve/reject high-value reports and view `/ops`. |
+| Quinn Quality | Quality          | Approve/reject high-value reports and view `/ops`.      |
 
 After choosing Zoe Store, `/app` opens the capture form.
 
@@ -106,10 +109,10 @@ The capture form is present in the cached document, so a fresh offline reload do
 
 Create reports using these totals:
 
-| Total | Expected path |
-| --- | --- |
-| CHF 150 | Auto-approved, then **Credit Note Processing** and **Completed**. |
-| CHF 250 | **With Regional Manager**; Rene can approve or reject it. |
+| Total     | Expected path                                                                   |
+| --------- | ------------------------------------------------------------------------------- |
+| CHF 150   | Auto-approved, then **Credit Note Processing** and **Completed**.               |
+| CHF 250   | **With Regional Manager**; Rene can approve or reject it.                       |
 | CHF 1,000 | Rene must approve first, then it becomes **With Quality Management** for Quinn. |
 
 Sign in as the appropriate approver and open `/approvals`. Each available report has **Approve** and **Reject** controls. Rejection requires a reason, which appears in the store view.
@@ -163,15 +166,15 @@ The Queue retries the mock ERP write. Once the limit is reached, the report beco
 
 The UI does not expose raw implementation errors or enum names.
 
-| Store label | Internal states |
-| --- | --- |
-| Pending Sync | `pending_sync` |
-| With Regional Manager | `submitted`, `pending_regional` |
-| With Quality Management | `pending_quality` |
-| Credit Note Processing | `approved`, `credit_note_processing` |
-| Completed | `completed` |
-| Rejected | `rejected`, with the supplied reason |
-| Needs attention — retrying | `sync_error`, `erp_error` |
+| Store label                | Internal states                      |
+| -------------------------- | ------------------------------------ |
+| Pending Sync               | `pending_sync`                       |
+| With Regional Manager      | `submitted`, `pending_regional`      |
+| With Quality Management    | `pending_quality`                    |
+| Credit Note Processing     | `approved`, `credit_note_processing` |
+| Completed                  | `completed`                          |
+| Rejected                   | `rejected`, with the supplied reason |
+| Needs attention — retrying | `sync_error`, `erp_error`            |
 
 The Service Worker polls the store's reports every 15 seconds. It updates locally-created reports and hydrates reports made in another session for the same store.
 

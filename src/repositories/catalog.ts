@@ -5,7 +5,9 @@ export class CatalogRepository {
   constructor(private readonly db: D1Database) {}
 
   async listActiveProducts() {
-    return (await this.db.prepare("SELECT id, sku, barcode, name FROM products WHERE active = 1 ORDER BY sku").all<Product>()).results;
+    return (
+      await this.db.prepare("SELECT id, sku, barcode, name FROM products WHERE active = 1 ORDER BY sku").all<Product>()
+    ).results;
   }
 
   findProductState(id: string) {
