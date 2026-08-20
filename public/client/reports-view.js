@@ -7,7 +7,7 @@ const formatStatus = (status) =>
     pending_regional: "With Regional Manager",
     pending_quality: "With Quality Management",
     approved: "Credit Note Processing",
-    credit_note_processing: "Credit Note Processing",
+    credit_note_pending: "Credit Note Processing",
     completed: "Completed",
     rejected: "Rejected",
     sync_error: "Needs attention — retrying",

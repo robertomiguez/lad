@@ -172,12 +172,16 @@ The Queue retries the mock ERP write. Once the limit is reached, the report beco
 
 The UI does not expose raw implementation errors or enum names.
 
+The reference case study and this POC use the same canonical internal status:
+`credit_note_pending`. It means that the credit note has been approved for
+creation and is waiting for, or being handled by, the ERP-write process.
+
 | Store label                | Internal states                      |
 | -------------------------- | ------------------------------------ |
 | Pending Sync               | `pending_sync`                       |
 | With Regional Manager      | `submitted`, `pending_regional`      |
 | With Quality Management    | `pending_quality`                    |
-| Credit Note Processing     | `approved`, `credit_note_processing` |
+| Credit Note Processing     | `approved`, `credit_note_pending`    |
 | Completed                  | `completed`                          |
 | Rejected                   | `rejected`, with the supplied reason |
 | Needs attention — retrying | `sync_error`, `erp_error`            |

@@ -28,7 +28,7 @@ CREATE TABLE reports (
   id TEXT PRIMARY KEY,
   store_id TEXT NOT NULL REFERENCES stores(id),
   reporter_id TEXT NOT NULL REFERENCES users(id),
-  status TEXT NOT NULL CHECK (status IN ('draft', 'pending_sync', 'submitted', 'pending_regional', 'pending_quality', 'approved', 'rejected', 'credit_note_processing', 'completed', 'sync_error', 'erp_error')),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'pending_sync', 'submitted', 'pending_regional', 'pending_quality', 'approved', 'rejected', 'credit_note_pending', 'completed', 'sync_error', 'erp_error')),
   total_amount INTEGER NOT NULL CHECK (total_amount >= 0),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
