@@ -1,5 +1,7 @@
 import { logError, logTransition, RETRY_LIMITS } from "../lib/observability";
 import { REPORT_STATUS } from "../domain/reports";
+import { CreditNotesRepository } from "../repositories/credit-notes";
+import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 
 export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
@@ -10,29 +12,31 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
       continue;
     }
     const maxRetries = Math.max(0, Number(env.ERP_MAX_RETRIES ?? String(RETRY_LIMITS.erpDefaultMaxRetries)));
+    const reports = new ReportsRepository(env.DB);
+    const creditNotes = new CreditNotesRepository(env.DB);
     const failPermanently = async (reason: string) => {
       await env.DB.batch([
-        env.DB.prepare("UPDATE credit_notes SET status = 'failed' WHERE report_id = ?").bind(reportId),
-        env.DB.prepare("UPDATE reports SET status = ?, updated_at = ? WHERE id = ?").bind(REPORT_STATUS.erpError, new Date().toISOString(), reportId)
+        creditNotes.markFailed(reportId),
+        reports.markErpErrorStatement(reportId, new Date().toISOString())
       ]);
       logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.creditNoteProcessing, toStatus: REPORT_STATUS.erpError, actor: "system", component: "erp-queue", reason });
       message.ack();
     };
     try {
-      const report = await env.DB.prepare("SELECT id, status FROM reports WHERE id = ?").bind(reportId).first<{ id: string; status: string }>();
+      const report = await reports.findForErp(reportId);
       if (!report) {
         message.ack();
         continue;
       }
-      let creditNote = await env.DB.prepare("SELECT id, status FROM credit_notes WHERE report_id = ?").bind(reportId).first<{ id: string; status: string }>();
+      let creditNote = await creditNotes.findByReportId(reportId);
       if (!creditNote) {
         const creditNoteId = crypto.randomUUID();
         await env.DB.batch([
-          env.DB.prepare("INSERT OR IGNORE INTO credit_notes (id, report_id, status, erp_document_id) VALUES (?, ?, 'pending', NULL)").bind(creditNoteId, reportId),
-          env.DB.prepare("UPDATE reports SET status = ?, updated_at = ? WHERE id = ? AND status = ?").bind(REPORT_STATUS.creditNoteProcessing, new Date().toISOString(), reportId, REPORT_STATUS.approved)
+          creditNotes.createPending(creditNoteId, reportId),
+          reports.markCreditNoteProcessingStatement(reportId, new Date().toISOString())
         ]);
         logTransition({ reportId, correlationId, fromStatus: report.status, toStatus: REPORT_STATUS.creditNoteProcessing, actor: "system", component: "erp-queue" });
-        creditNote = await env.DB.prepare("SELECT id, status FROM credit_notes WHERE report_id = ?").bind(reportId).first<{ id: string; status: string }>();
+        creditNote = await creditNotes.findByReportId(reportId);
       }
       if (!creditNote || creditNote.status === "created" || creditNote.status === "failed") {
         message.ack();
@@ -49,8 +53,8 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
         continue;
       }
       await env.DB.batch([
-        env.DB.prepare("UPDATE credit_notes SET status = 'created', erp_document_id = ? WHERE report_id = ?").bind(`ERP-${reportId}`, reportId),
-        env.DB.prepare("UPDATE reports SET status = ?, updated_at = ? WHERE id = ?").bind(REPORT_STATUS.completed, new Date().toISOString(), reportId)
+        creditNotes.markCreated(reportId, `ERP-${reportId}`),
+        reports.markCompletedStatement(reportId, new Date().toISOString())
       ]);
       logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.creditNoteProcessing, toStatus: REPORT_STATUS.completed, actor: "system", component: "erp-queue" });
       message.ack();

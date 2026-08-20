@@ -1,12 +1,12 @@
 import { forbidden, requireRole, type Claims } from "../auth";
-import { REPORT_STATUS } from "../domain/reports";
 import { ROLE } from "../domain/roles";
 import { escape, html } from "../lib/http";
+import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 
 export async function opsFragment(env: Env, claims: Claims) {
   if (!requireRole(claims, [ROLE.quality])) return forbidden();
-  const { results } = await env.DB.prepare("SELECT r.id, r.status, r.validation_error_code, r.escalated_at, r.escalation_target_role, c.status AS credit_note_status FROM reports r LEFT JOIN credit_notes c ON c.report_id = r.id WHERE r.status IN (?, ?) OR (r.status = ? AND c.status = 'pending') OR (r.escalated_at IS NOT NULL AND r.status IN (?, ?)) ORDER BY r.updated_at ASC").bind(REPORT_STATUS.syncError, REPORT_STATUS.erpError, REPORT_STATUS.creditNoteProcessing, REPORT_STATUS.pendingRegional, REPORT_STATUS.pendingQuality).all<{ id: string; status: string; validation_error_code: string | null; escalated_at: string | null; escalation_target_role: string | null; credit_note_status: string | null }>();
+  const results = await new ReportsRepository(env.DB).listNeedingAttention();
   return html(results.length ? `<div class="ops-list">${results.map(report => `<article class="ops-card"><strong>${escape(report.id)}</strong><span>${escape(report.status)}${report.validation_error_code ? ` · ${escape(report.validation_error_code)}` : ""}${report.escalated_at ? ` · overdue; escalation role: ${escape(report.escalation_target_role ?? "unassigned")}` : ""}${report.credit_note_status ? ` · credit note: ${escape(report.credit_note_status)}` : ""}</span></article>`).join("")}</div>` : "<p class=\"empty-state\">No stuck reports.</p>");
 }
 

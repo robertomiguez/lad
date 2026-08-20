@@ -2,6 +2,7 @@ import { logTransition } from "../lib/observability";
 import { initialWorkflowStatus, statusAfterRegionalApproval } from "../lib/workflow-policy";
 import { ROLE, type ApprovalRole } from "../domain/roles";
 import { REPORT_STATUS, isPendingApprovalStatus, type WorkflowStatus } from "../domain/reports";
+import { ReportsRepository } from "../repositories/reports";
 
 type WorkflowState = { reportId: string; storeId: string; totalAmountCents: number; status: WorkflowStatus; escalated?: boolean; escalationTargetRole?: ApprovalRole; erpEnqueued?: boolean };
 export interface WorkflowEnv { DB: D1Database; ERP_WRITE_QUEUE: Queue; AUTO_APPROVE_BELOW_REGIONAL?: string; ESCALATION_DEMO_DELAY_SECONDS?: string; }
@@ -62,7 +63,7 @@ export class ReportWorkflow implements DurableObject {
     current.escalated = true;
     current.escalationTargetRole = ROLE.quality;
     const timestamp = new Date().toISOString();
-    await this.env.DB.prepare("UPDATE reports SET escalated_at = ?, escalation_target_role = ?, updated_at = ? WHERE id = ? AND status = ?").bind(timestamp, current.escalationTargetRole, timestamp, current.reportId, current.status).run();
+    await new ReportsRepository(this.env.DB).markEscalated(current.reportId, current.status, current.escalationTargetRole, timestamp);
     logTransition({ reportId: current.reportId, correlationId: `alarm-${current.reportId}`, fromStatus: current.status, toStatus: "escalated", actor: "system", component: "workflow" });
     await this.state.storage.put("workflow", current);
   }
@@ -74,7 +75,7 @@ export class ReportWorkflow implements DurableObject {
 
   private async transition(workflow: WorkflowState, correlationId: string, actor: string, fromStatus: string, rejectionReason?: string) {
     const timestamp = new Date().toISOString();
-    await this.env.DB.prepare("UPDATE reports SET status = ?, rejection_reason = ?, escalated_at = NULL, escalation_target_role = NULL, updated_at = ? WHERE id = ?").bind(workflow.status, rejectionReason ?? null, timestamp, workflow.reportId).run();
+    await new ReportsRepository(this.env.DB).transitionWorkflow(workflow.reportId, workflow.status, rejectionReason, timestamp);
     if (workflow.status === REPORT_STATUS.approved && !workflow.erpEnqueued) {
       // Queue payloads deliberately contain no business state. The consumer reads
       // the current D1 report before writing the mock ERP credit note.
