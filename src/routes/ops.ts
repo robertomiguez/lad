@@ -36,7 +36,7 @@ export async function retryErpWrite(env: Env, claims: Claims, reportId: string, 
     reportId,
     correlationId,
     fromStatus: REPORT_STATUS.erpError,
-    toStatus: REPORT_STATUS.creditNoteProcessing,
+    toStatus: REPORT_STATUS.creditNotePending,
     actor: claims.user_id,
     component: "worker",
   });

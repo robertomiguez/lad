@@ -25,7 +25,7 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
       logTransition({
         reportId,
         correlationId,
-        fromStatus: REPORT_STATUS.creditNoteProcessing,
+        fromStatus: REPORT_STATUS.creditNotePending,
         toStatus: REPORT_STATUS.erpError,
         actor: "system",
         component: "erp-queue",
@@ -44,13 +44,13 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
         const creditNoteId = crypto.randomUUID();
         await env.DB.batch([
           creditNotes.createPending(creditNoteId, reportId),
-          reports.markCreditNoteProcessingStatement(reportId, new Date().toISOString()),
+          reports.markCreditNotePendingStatement(reportId, new Date().toISOString()),
         ]);
         logTransition({
           reportId,
           correlationId,
           fromStatus: report.status,
-          toStatus: REPORT_STATUS.creditNoteProcessing,
+          toStatus: REPORT_STATUS.creditNotePending,
           actor: "system",
           component: "erp-queue",
         });
@@ -79,7 +79,7 @@ export async function processErpWriteQueue(batch: MessageBatch<unknown>, env: En
       logTransition({
         reportId,
         correlationId,
-        fromStatus: REPORT_STATUS.creditNoteProcessing,
+        fromStatus: REPORT_STATUS.creditNotePending,
         toStatus: REPORT_STATUS.completed,
         actor: "system",
         component: "erp-queue",
