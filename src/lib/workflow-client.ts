@@ -9,6 +9,6 @@ export const initializeWorkflow = (env: Env, submission: Submission, correlation
     body: JSON.stringify({
       reportId: submission.id,
       storeId: submission.storeId,
-      totalAmountCents: submission.totalAmountCents
-    })
+      totalAmountCents: submission.totalAmountCents,
+    }),
   });
