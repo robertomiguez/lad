@@ -259,6 +259,12 @@ export class ReportsRepository {
       .bind(REPORT_STATUS.creditNoteProcessing, timestamp, reportId, REPORT_STATUS.approved);
   }
 
+  retryErpStatement(reportId: string, timestamp: string) {
+    return this.db
+      .prepare("UPDATE reports SET status = ?, updated_at = ? WHERE id = ? AND status = ?")
+      .bind(REPORT_STATUS.creditNoteProcessing, timestamp, reportId, REPORT_STATUS.erpError);
+  }
+
   markCompletedStatement(reportId: string, timestamp: string) {
     return this.db
       .prepare("UPDATE reports SET status = ?, updated_at = ? WHERE id = ?")

@@ -6,7 +6,7 @@ import { logError } from "./lib/observability";
 import { login, loginPage } from "./routes/auth";
 import { approvalsFragment, approvalsPage, decideReport } from "./routes/approvals";
 import { hello } from "./routes/hello";
-import { opsFragment, opsPage } from "./routes/ops";
+import { opsFragment, opsPage, retryErpWrite } from "./routes/ops";
 import { appPage, lineItemRow, myReports, productsResponse, reportStatuses } from "./routes/store";
 import { createReport, uploadPhoto } from "./services/report-submission";
 import { processErpWriteQueue } from "./services/erp-write";
@@ -43,6 +43,9 @@ async function routeRequest(request: Request, env: Env, correlationId: string): 
   const decisionRoute = pathname.match(/^\/api\/reports\/([^/]+)\/decision$/);
   if (request.method === "POST" && decisionRoute)
     return decideReport(request, env, claims, decisionRoute[1], correlationId);
+
+  const retryErpRoute = pathname.match(/^\/api\/reports\/([^/]+)\/retry-erp$/);
+  if (request.method === "POST" && retryErpRoute) return retryErpWrite(env, claims, retryErpRoute[1], correlationId);
 
   return Response.json({ error: "Not found" }, { status: 404 });
 }

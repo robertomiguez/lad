@@ -72,7 +72,7 @@ describe("Worker integration", () => {
       body: JSON.stringify({ decision: "approve" }),
     });
     expect(regional.status).toBe(200);
-    expect((await regional.json() as { status: string }).status).toBe("pending_quality");
+    expect(((await regional.json()) as { status: string }).status).toBe("pending_quality");
 
     const qualityCookie = await login("user-quality-hq");
     const quality = await SELF.fetch(`https://example.com/api/reports/${reportId}/decision`, {
@@ -81,6 +81,6 @@ describe("Worker integration", () => {
       body: JSON.stringify({ decision: "reject", reason: "Quality review rejected the claim" }),
     });
     expect(quality.status).toBe(200);
-    expect((await quality.json() as { status: string }).status).toBe("rejected");
+    expect(((await quality.json()) as { status: string }).status).toBe("rejected");
   });
 });
