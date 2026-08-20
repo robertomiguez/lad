@@ -1,4 +1,5 @@
 import { isRole, type Role } from "./domain/roles";
+import { jsonError } from "./lib/http";
 
 export type { Role } from "./domain/roles";
 export type Claims = { user_id: string; role: Role; store_id: string | null; exp: number };
@@ -47,6 +48,6 @@ export async function claimsFrom(request: Request, env: AuthEnv): Promise<Claims
   }
 }
 
-export const unauthorized = () => Response.json({ error: "Authentication required" }, { status: 401 });
-export const forbidden = () => Response.json({ error: "You do not have permission for this action" }, { status: 403 });
+export const unauthorized = () => jsonError("Authentication required", 401);
+export const forbidden = () => jsonError("You do not have permission for this action", 403);
 export const requireRole = (claims: Claims, roles: readonly Role[]) => roles.includes(claims.role);

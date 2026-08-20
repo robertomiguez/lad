@@ -3,6 +3,7 @@ import { ROLE } from "../domain/roles";
 import { ReportsRepository } from "../repositories/reports";
 import { CreditNotesRepository } from "../repositories/credit-notes";
 import { REPORT_STATUS } from "../domain/reports";
+import { jsonError } from "../lib/http";
 import { logTransition } from "../lib/observability";
 import type { Env } from "../types";
 import { opsPageView, opsWorklistView } from "../views/ops";
@@ -25,7 +26,7 @@ export async function retryErpWrite(env: Env, claims: Claims, reportId: string, 
   const report = await reports.findForErp(reportId);
   const creditNote = await creditNotes.findByReportId(reportId);
   if (report?.status !== REPORT_STATUS.erpError || creditNote?.status !== "failed")
-    return Response.json({ error: "ERP retry is not available" }, { status: 409 });
+    return jsonError("ERP retry is not available", 409);
   await env.DB.batch([
     creditNotes.retryFailedStatement(reportId),
     reports.retryErpStatement(reportId, new Date().toISOString()),

@@ -1,5 +1,6 @@
 import { forbidden, requireRole, type Claims } from "../auth";
 import { ROLE } from "../domain/roles";
+import { jsonResponse } from "../lib/http";
 import { CatalogRepository } from "../repositories/catalog";
 import { ReportsRepository } from "../repositories/reports";
 import { UsersRepository } from "../repositories/users";
@@ -15,7 +16,7 @@ export async function lineItemRow(env: Env) {
 }
 
 export async function productsResponse(env: Env) {
-  return Response.json(await products(env), { headers: { "cache-control": "no-store" } });
+  return jsonResponse(await products(env), 200, { "cache-control": "no-store" });
 }
 
 export async function appPage(env: Env, claims: Claims) {
@@ -32,7 +33,7 @@ export async function myReports(env: Env, claims: Claims) {
 export async function reportStatuses(env: Env, claims: Claims) {
   if (!requireRole(claims, [ROLE.store])) return forbidden();
   const results = await new ReportsRepository(env.DB).listStatusesForStore(claims.store_id);
-  return Response.json(
+  return jsonResponse(
     results.map((report) => ({
       id: report.id,
       status: report.status,

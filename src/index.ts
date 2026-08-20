@@ -1,5 +1,5 @@
 import { ReportWorkflow } from "./durable-objects/report-workflow";
-import { withCorrelation } from "./lib/http";
+import { jsonErrorCode, withCorrelation } from "./lib/http";
 import { logError } from "./lib/observability";
 import { dispatchRequest } from "./routes/registry";
 import { processErpWriteQueue } from "./services/erp-write";
@@ -12,7 +12,7 @@ export default {
       return withCorrelation(await dispatchRequest(request, env, correlationId), correlationId);
     } catch {
       logError(correlationId, "worker", "unhandled_request_error");
-      return withCorrelation(Response.json({ errorCode: "technical_error" }, { status: 500 }), correlationId);
+      return withCorrelation(jsonErrorCode("technical_error", 500), correlationId);
     }
   },
   queue(batch, env): Promise<void> {

@@ -1,6 +1,7 @@
 import { forbidden, requireRole, type Claims } from "../auth";
 import { REPORT_STATUS } from "../domain/reports";
 import { ROLE } from "../domain/roles";
+import { jsonResponse } from "../lib/http";
 import { initializeWorkflow } from "../lib/workflow-client";
 import { logError, logTransition } from "../lib/observability";
 import {
@@ -14,7 +15,6 @@ import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 import {
   submissionErrorResponse,
-  submissionJsonResponse,
   submissionStatusResponse,
   submissionValidationErrorResponse,
 } from "../views/submission";
@@ -187,22 +187,21 @@ export async function uploadPhoto(
   const photoId = request.headers.get("X-Photo-Id") ?? "";
   const contentType = request.headers.get("content-type") ?? "";
   if (!/^[a-zA-Z0-9-]{8,80}$/.test(photoId) || !contentType.startsWith("image/"))
-    return submissionJsonResponse({ errorCode: "invalid_photo_payload" }, 422);
+    return jsonResponse({ errorCode: "invalid_photo_payload" }, 422);
   const reports = new ReportsRepository(env.DB);
   const target = await reports.findPhotoTarget(reportId, lineItemId, claims.store_id);
-  if (!target || target.photo_id !== photoId)
-    return submissionJsonResponse({ errorCode: "photo_target_not_found" }, 404);
+  if (!target || target.photo_id !== photoId) return jsonResponse({ errorCode: "photo_target_not_found" }, 404);
   const existing = await reports.findPhotoStatus(photoId);
-  if (existing?.status === "uploaded") return submissionJsonResponse({ id: photoId, status: "uploaded" });
+  if (existing?.status === "uploaded") return jsonResponse({ id: photoId, status: "uploaded" });
   const r2Key = `reports/${reportId}/${photoId}`;
   try {
     await reports.ensurePendingPhoto(photoId, lineItemId, r2Key);
     await env.PHOTOS.put(r2Key, request.body!, { httpMetadata: { contentType } });
     await reports.updatePhotoStatus(photoId, "uploaded", r2Key);
-    return submissionJsonResponse({ id: photoId, status: "uploaded" }, 201);
+    return jsonResponse({ id: photoId, status: "uploaded" }, 201);
   } catch {
     await reports.updatePhotoStatus(photoId, "failed");
     logError(correlationId, "worker", "photo_upload_failed", reportId);
-    return submissionJsonResponse({ id: photoId, status: "failed", errorCode: "photo_upload_failed" }, 503);
+    return jsonResponse({ id: photoId, status: "failed", errorCode: "photo_upload_failed" }, 503);
   }
 }
