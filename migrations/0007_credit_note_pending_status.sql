@@ -1,6 +1,7 @@
 -- Align the POC's internal name with the reference case study. SQLite requires
--- rebuilding a table to change its CHECK constraint.
-PRAGMA foreign_keys = OFF;
+-- rebuilding a table to change its CHECK constraint. D1 always enforces foreign
+-- keys, so defer validation until the replacement parent table is in place.
+PRAGMA defer_foreign_keys = on;
 
 CREATE TABLE reports_next (
   id TEXT PRIMARY KEY,
@@ -39,4 +40,4 @@ ALTER TABLE reports_next RENAME TO reports;
 CREATE INDEX reports_store_updated_idx ON reports(store_id, updated_at DESC);
 CREATE INDEX reports_status_idx ON reports(status);
 
-PRAGMA foreign_keys = ON;
+PRAGMA defer_foreign_keys = off;
