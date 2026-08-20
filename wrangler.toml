@@ -6,6 +6,12 @@ workers_dev = true
 # This POC has a Durable Object; version preview URLs are not needed for the demo.
 preview_urls = false
 
+[observability]
+# Full sampling keeps the POC's correlation and transition logs available for a
+# customer demo. Tune this down before a high-volume production rollout.
+enabled = true
+head_sampling_rate = 1
+
 [assets]
 directory = "./public"
 

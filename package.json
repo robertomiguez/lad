@@ -16,12 +16,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "types": "wrangler types",
+    "types:check": "wrangler types --check",
+    "logs:tail": "wrangler tail --format json"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.20260811.1",
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
     "eslint": "^10.8.1",
     "prettier": "^3.9.6",
     "typescript": "^5.8.3",
