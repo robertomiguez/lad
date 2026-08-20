@@ -73,11 +73,11 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 
 After choosing Zoe Store, `/app` opens the capture form.
 
-1. Enter a date and total in CHF.
-2. Add one or more line items. Each needs a product, quantity, and reason. A photo is optional.
-3. Select **Save report**.
+1. To pause work, select **Save draft** at any point. Incomplete fields and optional photos remain only on the device; drafts do not sync or enter approval.
+2. To submit a report, enter a date and total in CHF, then add one or more complete line items. Each needs a product, quantity, and reason. A photo is optional.
+3. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**.
 
-The browser creates the report UUID before sending anything and saves the complete report to IndexedDB first. The report list is therefore the source of immediate feedback, whether online or offline.
+The browser creates the report UUID before sending anything and saves every draft to IndexedDB first. Drafts can be continued or discarded from **My reports**. The report list is therefore the source of immediate feedback, whether online or offline.
 
 ### Barcode and SKU capture
 
@@ -105,8 +105,8 @@ This seeded EAN maps to `SKU-100` (Sparkling Water 500ml). The app should show a
 
 1. Visit `/app` once while online so the browser can install the Service Worker and cache the app shell.
 2. In browser developer tools, select **Offline** (or disconnect the network).
-3. Create a report with an active product such as `SKU-100`.
-4. It appears immediately as **Pending Sync**. Reloading the page does not remove it.
+3. Create a complete report with an active product such as `SKU-100`, then select **Submit report**.
+4. It appears immediately as **Pending Sync**. Reloading the page does not remove it. A saved **Draft** remains local after connectivity returns until the store submits it.
 5. Restore connectivity. Background Sync or the browser `online` event posts the existing UUID automatically; the status updates without pressing submit again.
 
 The capture form is present in the cached document, so a fresh offline reload does not depend on an htmx request or external CDN asset.

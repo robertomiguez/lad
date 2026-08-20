@@ -3,6 +3,8 @@ import {
   allLocalProducts,
   allLocalReports,
   clearLocalProducts,
+  deleteLocalPhoto,
+  deleteLocalReport,
   makeId,
   saveLocalPhoto,
   saveLocalProduct,
@@ -19,22 +21,148 @@ const productCatalog = createProductCatalog({
   clearProducts: clearLocalProducts,
   saveProduct: saveLocalProduct,
 });
-const renderReports = createReportsRenderer({
-  allPhotos: allLocalPhotos,
-  allReports: allLocalReports,
-  requestSync,
-});
 
 const assignLineIds = (root) =>
   root.querySelectorAll("[data-line-id]").forEach((input) => {
     if (!input.value) input.value = makeId();
   });
 
+const addLineItem = (item = {}) => {
+  const template = document.querySelector("#line-item-template");
+  const destination = document.querySelector("#line-items");
+  if (!(template instanceof HTMLTemplateElement) || !destination) return null;
+  const fragment = template.content.cloneNode(true);
+  const row = fragment.querySelector(".line-item");
+  if (!(row instanceof HTMLElement)) return null;
+  row.querySelector("[name=line_item_id]").value = item.id || makeId();
+  row.querySelector("[name=product_id]").value = item.productId || "";
+  row.querySelector("[name=quantity]").value = item.quantity ?? "";
+  row.querySelector("[name=reason_code]").value = item.reasonCode || "";
+  if (item.photoId) row.dataset.photoId = item.photoId;
+  destination.append(fragment);
+  productCatalog.apply(destination);
+  return row;
+};
+
 const resetReportForm = (form) => {
   form.reset();
   form.elements.report_id.value = makeId();
   form.elements.report_date.value = new Date().toISOString().slice(0, 10);
-  assignLineIds(form);
+  const destination = document.querySelector("#line-items");
+  if (destination) destination.replaceChildren();
+  addLineItem();
+};
+
+const collectReport = async (form) => {
+  const rows = [...document.querySelectorAll(".line-item")];
+  const reportId = form.elements.report_id.value || makeId();
+  form.elements.report_id.value = reportId;
+  const items = await Promise.all(
+    rows.map(async (row) => {
+      const id = row.querySelector("[name=line_item_id]").value || makeId();
+      const file = row.querySelector("[name=photo]").files[0];
+      let photoId = row.dataset.photoId || undefined;
+      if (file) {
+        const blob = await compressPhoto(file);
+        if (photoId) await deleteLocalPhoto(photoId);
+        photoId = makeId();
+        await saveLocalPhoto({
+          id: photoId,
+          reportId,
+          lineItemId: id,
+          blob,
+          contentType: "image/jpeg",
+          status: "pending",
+          savedAt: new Date().toISOString(),
+        });
+        row.dataset.photoId = photoId;
+      }
+      return {
+        id,
+        productId: row.querySelector("[name=product_id]").value,
+        quantity: row.querySelector("[name=quantity]").value
+          ? Number(row.querySelector("[name=quantity]").value)
+          : null,
+        reasonCode: row.querySelector("[name=reason_code]").value,
+        photoId,
+      };
+    }),
+  );
+  rows.forEach((row, index) => {
+    row.querySelector("[name=line_item_id]").value = items[index].id;
+  });
+  const totalAmount = form.elements.total_amount.value;
+  return {
+    id: reportId,
+    storeId: form.elements.store_id.value,
+    reporterId: form.elements.reporter_id.value,
+    reportDate: form.elements.report_date.value,
+    totalAmountCents: totalAmount ? Math.round(Number(totalAmount) * 100) : null,
+    items,
+  };
+};
+
+const removeUnusedDraftPhotos = async (reportId, items) => {
+  const photoIds = new Set(items.map((item) => item.photoId).filter(Boolean));
+  const photos = await allLocalPhotos();
+  await Promise.all(
+    photos
+      .filter((photo) => photo.reportId === reportId && !photoIds.has(photo.id))
+      .map((photo) => deleteLocalPhoto(photo.id)),
+  );
+};
+
+const editDraft = async (draft) => {
+  const form = document.querySelector("#report-form");
+  if (!form) return;
+  const destination = document.querySelector("#line-items");
+  if (destination) destination.replaceChildren();
+  (draft.items?.length ? draft.items : [{}]).forEach(addLineItem);
+  form.elements.report_id.value = draft.id;
+  form.elements.report_date.value = draft.reportDate || "";
+  form.elements.total_amount.value = Number.isInteger(draft.totalAmountCents)
+    ? (draft.totalAmountCents / 100).toFixed(2)
+    : "";
+  document.querySelector("#form-errors").textContent = "";
+  document.querySelector("#form-feedback").textContent =
+    "Editing draft. Submit it when all required fields are complete.";
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  form.elements.report_date.focus();
+};
+
+const discardDraft = async (draft) => {
+  if (!confirm("Discard this draft and its local photos?")) return;
+  const photos = await allLocalPhotos();
+  await Promise.all([
+    deleteLocalReport(draft.id),
+    ...photos.filter((photo) => photo.reportId === draft.id).map((photo) => deleteLocalPhoto(photo.id)),
+  ]);
+  const form = document.querySelector("#report-form");
+  if (form?.elements.report_id.value === draft.id) resetReportForm(form);
+  document.querySelector("#form-errors").textContent = "";
+  document.querySelector("#form-feedback").textContent = "Draft discarded from this device.";
+  await renderReports();
+};
+
+const renderReports = createReportsRenderer({
+  allPhotos: allLocalPhotos,
+  allReports: allLocalReports,
+  requestSync,
+  onEditDraft: editDraft,
+  onDiscardDraft: discardDraft,
+});
+
+const saveDraft = async () => {
+  const form = document.querySelector("#report-form");
+  if (!form) return;
+  const draft = await collectReport(form);
+  await saveLocalReport({ ...draft, status: "draft", savedAt: new Date().toISOString() });
+  await removeUnusedDraftPhotos(draft.id, draft.items);
+  document.querySelector("#form-errors").textContent = "";
+  document.querySelector("#form-feedback").textContent =
+    "Draft saved on this device. It will not sync until you submit it.";
+  resetReportForm(form);
+  await renderReports();
 };
 
 const submitOfflineFirst = async (event) => {
@@ -55,60 +183,13 @@ const submitOfflineFirst = async (event) => {
     errors.textContent = "Add at least one line item.";
     return;
   }
-  const reportId = form.elements.report_id.value || makeId();
-  form.elements.report_id.value = reportId;
-  const items = await Promise.all(
-    rows.map(async (row) => {
-      const id = row.querySelector("[name=line_item_id]").value || makeId();
-      const file = row.querySelector("[name=photo]").files[0];
-      let photoId;
-      if (file) {
-        photoId = makeId();
-        await saveLocalPhoto({
-          id: photoId,
-          reportId,
-          lineItemId: id,
-          blob: await compressPhoto(file),
-          contentType: "image/jpeg",
-          status: "pending",
-          savedAt: new Date().toISOString(),
-        });
-      }
-      return {
-        id,
-        productId: row.querySelector("[name=product_id]").value,
-        quantity: Number(row.querySelector("[name=quantity]").value),
-        reasonCode: row.querySelector("[name=reason_code]").value,
-        photoId,
-      };
-    }),
-  );
-  rows.forEach((row, index) => {
-    row.querySelector("[name=line_item_id]").value = items[index].id;
-  });
-  const payload = {
-    id: reportId,
-    storeId: form.elements.store_id.value,
-    reporterId: form.elements.reporter_id.value,
-    reportDate: form.elements.report_date.value,
-    totalAmountCents: Math.round(Number(form.elements.total_amount.value) * 100),
-    items,
-  };
-  await saveLocalReport({ id: reportId, ...payload, status: "pending_sync", savedAt: new Date().toISOString() });
+  const report = await collectReport(form);
+  await saveLocalReport({ ...report, status: "pending_sync", savedAt: new Date().toISOString() });
   errors.textContent = "";
-  feedback.textContent = "Saved on this device. Sync will continue automatically when online.";
+  feedback.textContent = "Submitted from this device. Sync will continue automatically when online.";
   await renderReports();
   resetReportForm(form);
   await requestSync();
-};
-
-const addLineItem = () => {
-  const template = document.querySelector("#line-item-template");
-  const destination = document.querySelector("#line-items");
-  if (!(template instanceof HTMLTemplateElement) || !destination) return;
-  destination.append(template.content.cloneNode(true));
-  assignLineIds(destination);
-  productCatalog.apply(destination);
 };
 
 const handleClick = (event) => {
@@ -151,11 +232,10 @@ const handleKeydown = (event) => {
 document.addEventListener("DOMContentLoaded", async () => {
   const form = document.querySelector("#report-form");
   if (!form) return;
-  form.elements.report_id.value = makeId();
-  form.elements.report_date.value = new Date().toISOString().slice(0, 10);
-  assignLineIds(form);
+  resetReportForm(form);
   form.addEventListener("submit", submitOfflineFirst, true);
-  document.querySelector("#add-line-item")?.addEventListener("click", addLineItem);
+  document.querySelector("#save-draft")?.addEventListener("click", saveDraft);
+  document.querySelector("#add-line-item")?.addEventListener("click", () => addLineItem());
   document.body.addEventListener("click", handleClick);
   document.body.addEventListener("change", handleChange);
   document.body.addEventListener("keydown", handleKeydown);

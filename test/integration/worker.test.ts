@@ -62,7 +62,10 @@ describe("Worker integration", () => {
   it("renders store, approval, and operations pages through the shared layout", async () => {
     const storeCookie = await login("user-store-zurich");
     const storePage = await SELF.fetch("https://example.com/app", { headers: { cookie: storeCookie } });
-    await expect(storePage.text()).resolves.toContain('script type="module" src="/app.js"');
+    const storeMarkup = await storePage.text();
+    expect(storeMarkup).toContain('script type="module" src="/app.js"');
+    expect(storeMarkup).toContain('id="save-draft"');
+    expect(storeMarkup).toContain("Submit report");
 
     const regionalCookie = await login("user-regional-north");
     const approvalsPage = await SELF.fetch("https://example.com/approvals", { headers: { cookie: regionalCookie } });

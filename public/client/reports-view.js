@@ -21,7 +21,10 @@ const formatPhotoStatus = (status) =>
 const formatRole = (role) =>
   ({ regional_manager: "Regional Manager", quality: "Quality Management" })[role] || "the fallback approver role";
 
-export function createReportsRenderer({ allPhotos, allReports, requestSync }) {
+const formatAmount = (amountCents) =>
+  Number.isInteger(amountCents) ? `CHF ${(amountCents / 100).toFixed(2)}` : "Amount not set";
+
+export function createReportsRenderer({ allPhotos, allReports, requestSync, onEditDraft, onDiscardDraft }) {
   let thumbnailUrls = [];
 
   return async function renderReports() {
@@ -40,7 +43,7 @@ export function createReportsRenderer({ allPhotos, allReports, requestSync }) {
             const reportPhotos = photos.filter((photo) => photo.reportId === report.id);
             const summary = document.createElement("div");
             summary.className = "report-summary";
-            summary.textContent = `${report.id} · ${workflow} · CHF ${(report.totalAmountCents / 100).toFixed(2)}`;
+            summary.textContent = `${report.id} · ${workflow} · ${formatAmount(report.totalAmountCents)}`;
             item.append(summary);
             const details = document.createElement("div");
             details.className = "report-details";
@@ -78,6 +81,22 @@ export function createReportsRenderer({ allPhotos, allReports, requestSync }) {
               retry.textContent = "Retry now";
               retry.dataset.retry = "true";
               item.append(" ", retry);
+            }
+            if (report.status === "draft") {
+              const actions = document.createElement("div");
+              actions.className = "report-actions";
+              const edit = document.createElement("button");
+              edit.type = "button";
+              edit.className = "button-secondary";
+              edit.textContent = "Continue editing";
+              edit.addEventListener("click", () => onEditDraft?.(report));
+              const discard = document.createElement("button");
+              discard.type = "button";
+              discard.className = "discard-draft";
+              discard.textContent = "Discard";
+              discard.addEventListener("click", () => onDiscardDraft?.(report));
+              actions.append(edit, discard);
+              item.append(actions);
             }
             return item;
           })
