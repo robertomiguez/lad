@@ -1,5 +1,17 @@
 const DB = "damage-reporting-poc",
-  CACHE = "damage-reporting-shell-v2";
+  CACHE = "damage-reporting-shell-v3";
+const shellAssets = [
+  "/app.js",
+  "/barcode.js",
+  "/sw.js",
+  "/styles.css",
+  "/client/storage.js",
+  "/client/catalog.js",
+  "/client/barcode-scanner.js",
+  "/client/photo.js",
+  "/client/reports-view.js",
+  "/client/worker-sync.js",
+];
 const db = () =>
   new Promise((resolve, reject) => {
     const request = indexedDB.open(DB, 3);
@@ -128,9 +140,7 @@ const refreshStatuses = async () => {
   } catch {}
 };
 self.addEventListener("install", (event) =>
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(["/app.js", "/barcode.js", "/sw.js", "/styles.css"])),
-  ),
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(shellAssets))),
 );
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener("message", (event) => {
@@ -147,8 +157,7 @@ self.addEventListener("fetch", (event) => {
       .then(async (response) => {
         if (
           response.ok &&
-          (event.request.mode === "navigate" ||
-            ["/app.js", "/barcode.js", "/styles.css"].includes(new URL(event.request.url).pathname))
+          (event.request.mode === "navigate" || shellAssets.includes(new URL(event.request.url).pathname))
         )
           (await caches.open(CACHE)).put(event.request, response.clone());
         return response;
