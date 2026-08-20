@@ -1,16 +1,14 @@
 import { forbidden, requireRole, type Claims } from "../auth";
-import { APPROVAL_ROLES, ROLE, canAccessStore as roleCanAccessStore, roleLabel } from "../domain/roles";
+import { APPROVAL_ROLES, ROLE, canAccessStore as roleCanAccessStore, roleLabel, type ApprovalRole } from "../domain/roles";
 import { REPORT_STATUS } from "../domain/reports";
 import { escape, html } from "../lib/http";
 import { reportWorkflow } from "../lib/workflow-client";
+import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 
 export async function approvalsFragment(env: Env, claims: Claims) {
   if (!requireRole(claims, APPROVAL_ROLES)) return forbidden();
-  const query = claims.role === ROLE.regionalManager
-    ? env.DB.prepare("SELECT id, store_id, status, total_amount, escalated_at, escalation_target_role FROM reports WHERE store_id = ? AND status = ? ORDER BY updated_at ASC").bind(claims.store_id, REPORT_STATUS.pendingRegional)
-    : env.DB.prepare("SELECT id, store_id, status, total_amount, escalated_at, escalation_target_role FROM reports WHERE status = ? ORDER BY updated_at ASC").bind(REPORT_STATUS.pendingQuality);
-  const { results } = await query.all<{ id: string; store_id: string; status: string; total_amount: number; escalated_at: string | null; escalation_target_role: string | null }>();
+  const results = await new ReportsRepository(env.DB).listForApproval(claims.role as ApprovalRole, claims.store_id);
   return html(results.length ? `<div class="worklist">${results.map(report => `<article class="approval-card"><div class="approval-meta"><span class="report-id">${escape(report.id)}</span><span class="amount">CHF ${(report.total_amount / 100).toFixed(2)}</span>${report.escalated_at ? `<mark>Escalated to ${escape(report.escalation_target_role ?? "fallback role")}</mark>` : ""}</div><div class="approval-actions"><form hx-post="/api/reports/${encodeURIComponent(report.id)}/decision" hx-target="#approval-worklist" hx-swap="innerHTML"><input type="hidden" name="decision" value="approve"><button>Approve</button></form><form hx-post="/api/reports/${encodeURIComponent(report.id)}/decision" hx-target="#approval-worklist" hx-swap="innerHTML"><label><span class="visually-hidden">Rejection reason</span><input name="reason" placeholder="Rejection reason" required></label><input type="hidden" name="decision" value="reject"><button>Reject</button></form></div></article>`).join("")}</div>` : "<p class=\"empty-state\">No approval work currently assigned.</p>");
 }
 
@@ -23,7 +21,8 @@ export function approvalsPage(claims: Claims) {
 
 export async function decideReport(request: Request, env: Env, claims: Claims, reportId: string, correlationId: string) {
   if (!requireRole(claims, APPROVAL_ROLES)) return forbidden();
-  const report = await env.DB.prepare("SELECT store_id, status FROM reports WHERE id = ?").bind(reportId).first<{ store_id: string; status: string }>();
+  const reports = new ReportsRepository(env.DB);
+  const report = await reports.findDecisionTarget(reportId);
   if (!report) return Response.json({ error: "Report not found" }, { status: 404 });
   if (!roleCanAccessStore(claims.role, claims.store_id, report.store_id) || (claims.role === ROLE.regionalManager && report.status !== REPORT_STATUS.pendingRegional) || (claims.role === ROLE.quality && report.status !== REPORT_STATUS.pendingQuality)) return forbidden();
 
@@ -43,6 +42,6 @@ export async function decideReport(request: Request, env: Env, claims: Claims, r
   if (!response.ok) return new Response(response.body, response);
   if (request.headers.get("HX-Request") === "true") return approvalsFragment(env, claims);
 
-  const updated = await env.DB.prepare("SELECT id, status, total_amount, rejection_reason FROM reports WHERE id = ?").bind(reportId).first<{ id: string; status: string; total_amount: number; rejection_reason: string | null }>();
+  const updated = await reports.findDecisionResult(reportId);
   return Response.json({ id: updated!.id, status: updated!.status, totalAmountCents: updated!.total_amount, rejectionReason: updated!.rejection_reason });
 }
