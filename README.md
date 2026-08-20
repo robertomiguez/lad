@@ -45,7 +45,9 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 | ---------------------------------------------- | --------------------------------------------------------------- |
 | `npm run dev`                                  | Start the local Worker.                                         |
 | `npm run db:migrate:local`                     | Apply D1 migrations locally.                                    |
+| `npm run db:migrate:remote`                    | Apply D1 migrations remotely before a Worker deployment.        |
 | `npm run db:seed:local`                        | Add the demo stores, users and products.                        |
+| `npm run db:seed:remote`                       | Add or refresh the remote demo users and products.              |
 | `npm run db:simulate:deactivate-product:local` | Make `SKU-200` inactive for the offline-validation demo.        |
 | `npm run db:simulate:reactivate-product:local` | Restore `SKU-200`.                                              |
 | `npm run typecheck`                            | Type-check the Worker.                                          |
@@ -56,7 +58,8 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 | `npm run types`                                | Regenerate Cloudflare binding types after Wrangler changes.     |
 | `npm run types:check`                          | Verify generated Cloudflare binding types are current.          |
 | `npm run logs:tail`                            | Tail structured Worker logs as JSON in a second terminal.       |
-| `npx wrangler deploy --dry-run`                | Bundle and validate the deploy configuration without deploying. |
+| `npm run deploy:check`                         | Bundle and validate the deploy configuration without deploying. |
+| `npm run deploy`                               | Migrate remote D1, then deploy the Worker.                      |
 
 ## Sign in and use the app
 
@@ -219,15 +222,23 @@ source repository, but is not suitable for hosting this app separately.
    `id`, R2 `bucket_name`, and Queue name returned or chosen above. Durable Objects
    are declared in the same Worker configuration and are provisioned by deployment.
 4. Set the production signing secret: `npx wrangler secret put JWT_SECRET`.
-5. Apply the D1 schema and seed the demo users/products remotely:
+5. For the first remote setup, create the schema and seed the demo data. On every
+   later deployment, `npm run deploy` applies pending D1 migrations before
+   uploading the Worker, preventing a newer Worker from querying a column that
+   does not yet exist remotely.
 
    ```bash
-   npx wrangler d1 migrations apply damage-reporting-prod --remote
-   npx wrangler d1 execute damage-reporting-prod --remote --file=seed/seed.sql
+   npm run db:migrate:remote
+   npm run db:seed:remote
    ```
 
-6. Validate the bundle with `npx wrangler deploy --dry-run`, then deploy with
-   `npm run deploy`. Wrangler prints the resulting `workers.dev` URL.
+6. Validate the bundle, then migrate and deploy with `npm run deploy`. Wrangler
+   prints the resulting `workers.dev` URL.
+
+   ```bash
+   npm run deploy:check
+   npm run deploy
+   ```
 
 Do not deploy `.dev.vars`; it is local-only and ignored by Git.
 
