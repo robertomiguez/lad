@@ -1,9 +1,11 @@
+import type { ReportWorkflow } from "./durable-objects/report-workflow";
+
 export interface Env {
   DB: D1Database;
   IDEMPOTENCY: KVNamespace;
   PHOTOS: R2Bucket;
   ERP_WRITE_QUEUE: Queue;
-  REPORT_DO: DurableObjectNamespace;
+  REPORT_DO: DurableObjectNamespace<ReportWorkflow>;
   JWT_SECRET: string;
   ENVIRONMENT: string;
   AUTO_APPROVE_BELOW_REGIONAL?: string;
