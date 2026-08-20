@@ -4,6 +4,7 @@ import { escape, html } from "../lib/http";
 import type { Product } from "../repositories/catalog";
 import type { StoreReport } from "../repositories/reports";
 import type { StoreWorkspaceUser } from "../repositories/users";
+import { pageDocument, pageHeaderView, topBarView } from "./layout";
 
 const productOptions = (products: Product[]) =>
   products
@@ -17,9 +18,11 @@ export const lineItemView = (products: Product[]) => html(lineItemMarkup(product
 
 export const storeAppView = (claims: Claims, user: StoreWorkspaceUser | null, products: Product[]) => {
   const item = lineItemMarkup(productOptions(products));
-  return html(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New damage report</title><link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script><header class="topbar"><span class="brand"><span class="brand-mark">DR</span>Damage Reporting</span><span class="session">Store workspace · <strong>${escape(user?.store_name ?? claims.store_id ?? "")}</strong></span><a class="button back-button" href="/">Back</a></header><main class="page"><div class="page-header"><div><p class="eyebrow">New claim</p><h1>Report damaged goods</h1><p class="lede">Saved to this device first, then synchronized safely when a connection is available.</p></div></div><div class="capture-grid"><section class="card form-card"><form id="report-form"><input type="hidden" name="report_id" id="report-id"><input type="hidden" name="store_id" value="${escape(claims.store_id ?? "")}"><input type="hidden" name="reporter_id" value="${escape(claims.user_id)}"><div class="form-grid"><label>Date <input name="report_date" type="date" required></label><label>Total amount (CHF) <input name="total_amount" type="number" min="0" step="0.01" required></label></div><div id="form-errors" class="error" aria-live="polite"></div><h2>Damaged items</h2><div id="line-items">${item}</div><template id="line-item-template">${item}</template><div class="form-actions"><button type="button" id="add-line-item" class="button-secondary">Add another item</button><button type="submit">Save report</button></div><div id="form-feedback" class="form-feedback" aria-live="polite"></div><p class="form-note">${escape(user?.name ?? claims.user_id)} · optional photos upload independently.</p></form><div id="form-result" aria-live="polite"></div></section><section class="card reports-card"><p class="eyebrow">Live status</p><h2>My reports</h2><div id="my-reports"></div></section></div></main></html>`,
-  );
+  return pageDocument({
+    title: "New damage report",
+    scripts: [{ src: "/app.js", module: true }],
+    body: `${topBarView({ session: "Store workspace ·", emphasis: user?.store_name ?? claims.store_id ?? "", backHref: "/" })}<main class="page">${pageHeaderView({ eyebrow: "New claim", title: "Report damaged goods", lede: "Saved to this device first, then synchronized safely when a connection is available." })}<div class="capture-grid"><section class="card form-card"><form id="report-form"><input type="hidden" name="report_id" id="report-id"><input type="hidden" name="store_id" value="${escape(claims.store_id ?? "")}"><input type="hidden" name="reporter_id" value="${escape(claims.user_id)}"><div class="form-grid"><label>Date <input name="report_date" type="date" required></label><label>Total amount (CHF) <input name="total_amount" type="number" min="0" step="0.01" required></label></div><div id="form-errors" class="error" aria-live="polite"></div><h2>Damaged items</h2><div id="line-items">${item}</div><template id="line-item-template">${item}</template><div class="form-actions"><button type="button" id="add-line-item" class="button-secondary">Add another item</button><button type="submit">Save report</button></div><div id="form-feedback" class="form-feedback" aria-live="polite"></div><p class="form-note">${escape(user?.name ?? claims.user_id)} · optional photos upload independently.</p></form><div id="form-result" aria-live="polite"></div></section><section class="card reports-card"><p class="eyebrow">Live status</p><h2>My reports</h2><div id="my-reports"></div></section></div></main>`,
+  });
 };
 
 export const myReportsView = (reports: StoreReport[]) =>

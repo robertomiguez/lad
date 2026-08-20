@@ -59,6 +59,20 @@ describe("Worker integration", () => {
     expect(unknown.status).toBe(404);
   });
 
+  it("renders store, approval, and operations pages through the shared layout", async () => {
+    const storeCookie = await login("user-store-zurich");
+    const storePage = await SELF.fetch("https://example.com/app", { headers: { cookie: storeCookie } });
+    await expect(storePage.text()).resolves.toContain('script type="module" src="/app.js"');
+
+    const regionalCookie = await login("user-regional-north");
+    const approvalsPage = await SELF.fetch("https://example.com/approvals", { headers: { cookie: regionalCookie } });
+    await expect(approvalsPage.text()).resolves.toContain('hx-get="/fragments/approvals"');
+
+    const qualityCookie = await login("user-quality-hq");
+    const opsPage = await SELF.fetch("https://example.com/ops", { headers: { cookie: qualityCookie } });
+    await expect(opsPage.text()).resolves.toContain('hx-get="/fragments/ops"');
+  });
+
   it("submits idempotently and routes a CHF 1,000 report through both approvals", async () => {
     const reportId = "report-lifecycle-1000";
     const payload = {
