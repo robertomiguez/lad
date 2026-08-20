@@ -15,7 +15,7 @@
     "db:simulate:deactivate-product:local": "wrangler d1 execute DB --local --file=seed/deactivate-product.sql",
     "db:simulate:reactivate-product:local": "wrangler d1 execute DB --local --file=seed/reactivate-product.sql",
     "test": "npm run test:unit && npm run test:workers",
-    "test:unit": "tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --rootDir src --outDir .test-build src/lib/workflow-policy.ts src/domain/roles.ts && node --test test/*.test.mjs",
+    "test:unit": "tsc --target ES2022 --module ESNext --moduleResolution Bundler --rootDir src --outDir .test-build src/lib/workflow-policy.ts src/lib/submission-input.ts src/domain/roles.ts && node --test test/*.test.mjs",
     "test:workers": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

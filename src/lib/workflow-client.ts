@@ -4,7 +4,8 @@ import type {
   WorkflowDecisionResult,
   WorkflowInitialization,
 } from "../durable-objects/report-workflow";
-import type { Env, Submission } from "../types";
+import type { Submission } from "../domain/submission";
+import type { Env } from "../types";
 
 export const reportWorkflow = (env: Env, id: string): DurableObjectStub<ReportWorkflow> => env.REPORT_DO.getByName(id);
 

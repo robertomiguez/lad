@@ -4,34 +4,15 @@ import { ROLE } from "../domain/roles";
 import { escape, html } from "../lib/http";
 import { initializeWorkflow } from "../lib/workflow-client";
 import { logError, logTransition } from "../lib/observability";
+import {
+  hasValidSubmissionShape,
+  isJsonSubmissionRequest,
+  parseSubmission,
+  validateSubmissionCatalog,
+} from "../lib/submission-input";
 import { CatalogRepository } from "../repositories/catalog";
 import { ReportsRepository } from "../repositories/reports";
-import type { Env, Submission } from "../types";
-
-async function submissionFrom(request: Request): Promise<Submission | null> {
-  if (request.headers.get("content-type")?.includes("application/json")) {
-    const input = (await request.json()) as Partial<Submission>;
-    return Array.isArray(input.items) ? (input as Submission) : null;
-  }
-  const form = await request.formData();
-  const productIds = form.getAll("product_id").map(String);
-  const quantities = form.getAll("quantity").map(String);
-  const reasons = form.getAll("reason_code").map(String);
-  const lineIds = form.getAll("line_item_id").map(String);
-  return {
-    id: String(form.get("report_id") ?? ""),
-    storeId: String(form.get("store_id") ?? ""),
-    reporterId: String(form.get("reporter_id") ?? ""),
-    reportDate: String(form.get("report_date") ?? ""),
-    totalAmountCents: Math.round(Number(form.get("total_amount")) * 100),
-    items: productIds.map((productId, index) => ({
-      id: lineIds[index],
-      productId,
-      quantity: Number(quantities[index]),
-      reasonCode: reasons[index],
-    })),
-  };
-}
+import type { Env } from "../types";
 
 const reportJson = (
   report: { id: string; status: string; total_amount: number; validation_error_code?: string | null },
@@ -47,57 +28,19 @@ const reportJson = (
     { status },
   );
 
-async function validationError(catalog: CatalogRepository, submission: Submission) {
-  const allowedReasons = new Set(["damaged", "incorrect_delivery", "expired"]);
-  if (submission.items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1)) return "invalid_quantity";
-  if (submission.items.some((item) => !allowedReasons.has(item.reasonCode))) return "invalid_reason_code";
-  const store = await catalog.storeExists(submission.storeId);
-  if (!store) return "store_not_found";
-  for (const item of submission.items) {
-    const product = await catalog.findProductState(item.productId);
-    if (!product) return "product_not_found";
-    if (product.active !== 1) return "product_inactive";
-  }
-  return null;
-}
-
 export async function createReport(request: Request, env: Env, claims: Claims, correlationId: string) {
   if (!requireRole(claims, [ROLE.store])) return forbidden();
-  const jsonRequest = request.headers.get("content-type")?.includes("application/json") ?? false;
-  let submission: Submission | null;
-  try {
-    submission = await submissionFrom(request);
-  } catch {
-    submission = null;
-  }
+  const jsonRequest = isJsonSubmissionRequest(request);
+  const submission = await parseSubmission(request).catch(() => null);
   if (!submission)
     return jsonRequest
       ? Response.json({ error: "Invalid report payload" }, { status: 422 })
       : html(`<p class="error">Please complete every required report and line-item field.</p>`, 422);
 
-  const { id: reportId, storeId, reporterId, reportDate, totalAmountCents, items } = submission;
+  const { id: reportId, totalAmountCents } = submission;
   const reports = new ReportsRepository(env.DB);
   const catalog = new CatalogRepository(env.DB);
-  const validId = (value: string) => /^[a-zA-Z0-9-]{8,80}$/.test(value);
-  const invalid =
-    !validId(reportId) ||
-    (request.headers.get("Idempotency-Key") && request.headers.get("Idempotency-Key") !== reportId) ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(reportDate) ||
-    storeId !== claims.store_id ||
-    reporterId !== claims.user_id ||
-    !Number.isInteger(totalAmountCents) ||
-    totalAmountCents < 0 ||
-    items.length < 1 ||
-    items.some(
-      (item) =>
-        !validId(item.id) ||
-        !item.productId ||
-        !item.reasonCode ||
-        !Number.isInteger(item.quantity) ||
-        item.quantity < 1 ||
-        (item.photoId !== undefined && !validId(item.photoId)),
-    );
-  if (invalid) {
+  if (!hasValidSubmissionShape(submission, claims, request.headers.get("Idempotency-Key"))) {
     logError(correlationId, "worker", "invalid_payload", reportId);
     return jsonRequest
       ? Response.json({ errorCode: "invalid_payload" }, { status: 422 })
@@ -127,7 +70,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
       : html(`<p role="status">Report <strong>${escape(recovered.id)}</strong> was already submitted.</p>`);
   }
 
-  const errorCode = await validationError(catalog, submission);
+  const errorCode = await validateSubmissionCatalog(catalog, submission);
   const timestamp = new Date().toISOString();
   if (existing?.status === REPORT_STATUS.syncError) {
     if (errorCode) {
