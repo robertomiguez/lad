@@ -1,6 +1,6 @@
 import { REPORT_STATUS, type ReportStatus } from "../domain/reports";
 import { ROLE, type ApprovalRole } from "../domain/roles";
-import type { Submission } from "../types";
+import type { Submission } from "../domain/submission";
 
 export type ExistingReport = {
   id: string;

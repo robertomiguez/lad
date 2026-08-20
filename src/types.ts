@@ -1,5 +1,7 @@
 import type { ReportWorkflow } from "./durable-objects/report-workflow";
 
+export type { Submission } from "./domain/submission";
+
 export interface Env {
   DB: D1Database;
   IDEMPOTENCY: KVNamespace;
@@ -14,18 +16,3 @@ export interface Env {
   ERP_FAILURE_RATE?: string;
   ERP_MAX_RETRIES?: string;
 }
-
-export type Submission = {
-  id: string;
-  storeId: string;
-  reporterId: string;
-  reportDate: string;
-  totalAmountCents: number;
-  items: {
-    id: string;
-    productId: string;
-    quantity: number;
-    reasonCode: string;
-    photoId?: string;
-  }[];
-};
