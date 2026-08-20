@@ -31,8 +31,10 @@ const withStore = async (name, mode, action) => {
 export const makeId = () => crypto.randomUUID();
 export const saveLocalReport = (report) => withStore("reports", "readwrite", (store) => store.put(report));
 export const allLocalReports = () => withStore("reports", "readonly", (store) => store.getAll());
+export const deleteLocalReport = (id) => withStore("reports", "readwrite", (store) => store.delete(id));
 export const saveLocalPhoto = (photo) => withStore("photos", "readwrite", (store) => store.put(photo));
 export const allLocalPhotos = () => withStore("photos", "readonly", (store) => store.getAll());
+export const deleteLocalPhoto = (id) => withStore("photos", "readwrite", (store) => store.delete(id));
 export const saveLocalProduct = (product) => withStore("products", "readwrite", (store) => store.put(product));
 export const allLocalProducts = () => withStore("products", "readonly", (store) => store.getAll());
 export const clearLocalProducts = () => withStore("products", "readwrite", (store) => store.clear());

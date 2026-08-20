@@ -382,6 +382,23 @@ h2 {
   padding: 0.42rem 0.65rem;
   font-size: 0.8rem;
 }
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.report .report-actions button {
+  margin: 0;
+}
+.discard-draft {
+  color: var(--danger);
+  background: #fbecea;
+}
+.discard-draft:hover {
+  background: #f4d4cf;
+  box-shadow: none;
+}
 .empty-state {
   margin: 0;
   padding: 1.3rem 0;

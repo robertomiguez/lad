@@ -1,5 +1,5 @@
 const DB = "damage-reporting-poc",
-  CACHE = "damage-reporting-shell-v3";
+  CACHE = "damage-reporting-shell-v4";
 const shellAssets = [
   "/app.js",
   "/barcode.js",
