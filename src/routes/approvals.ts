@@ -1,0 +1,46 @@
+import { canAccessStore, forbidden, requireRole, type Claims } from "../auth";
+import { escape, html } from "../lib/http";
+import { reportWorkflow } from "../lib/workflow-client";
+import type { Env } from "../types";
+
+export async function approvalsFragment(env: Env, claims: Claims) {
+  if (!requireRole(claims, ["regional_manager", "quality"])) return forbidden();
+  const query = claims.role === "regional_manager"
+    ? env.DB.prepare("SELECT id, store_id, status, total_amount, escalated_at, escalation_target_role FROM reports WHERE store_id = ? AND status = 'pending_regional' ORDER BY updated_at ASC").bind(claims.store_id)
+    : env.DB.prepare("SELECT id, store_id, status, total_amount, escalated_at, escalation_target_role FROM reports WHERE status = 'pending_quality' ORDER BY updated_at ASC");
+  const { results } = await query.all<{ id: string; store_id: string; status: string; total_amount: number; escalated_at: string | null; escalation_target_role: string | null }>();
+  return html(results.length ? `<div class="worklist">${results.map(report => `<article class="approval-card"><div class="approval-meta"><span class="report-id">${escape(report.id)}</span><span class="amount">CHF ${(report.total_amount / 100).toFixed(2)}</span>${report.escalated_at ? `<mark>Escalated to ${escape(report.escalation_target_role ?? "fallback role")}</mark>` : ""}</div><div class="approval-actions"><form hx-post="/api/reports/${encodeURIComponent(report.id)}/decision" hx-target="#approval-worklist" hx-swap="innerHTML"><input type="hidden" name="decision" value="approve"><button>Approve</button></form><form hx-post="/api/reports/${encodeURIComponent(report.id)}/decision" hx-target="#approval-worklist" hx-swap="innerHTML"><label><span class="visually-hidden">Rejection reason</span><input name="reason" placeholder="Rejection reason" required></label><input type="hidden" name="decision" value="reject"><button>Reject</button></form></div></article>`).join("")}</div>` : "<p class=\"empty-state\">No approval work currently assigned.</p>");
+}
+
+export function approvalsPage(claims: Claims) {
+  if (!requireRole(claims, ["regional_manager", "quality"])) return forbidden();
+  const roleLabel = claims.role === "regional_manager" ? "Regional Manager" : "Quality Management";
+  const operationsLink = claims.role === "quality" ? `<a class="button button-secondary" href="/ops">Operations</a>` : "";
+  return html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Approval worklist</title><link rel="stylesheet" href="/styles.css"><script src="https://unpkg.com/htmx.org@2.0.4"></script><header class="topbar"><span class="brand"><span class="brand-mark">DR</span>Damage Reporting</span><span class="session">Signed in as <strong>${escape(roleLabel)}</strong></span><a class="button back-button" href="/">Back</a></header><main class="page"><div class="page-header"><div><p class="eyebrow">Approval queue</p><h1>Approval worklist</h1><p class="lede">Review reports assigned to your role. This list refreshes automatically every 15 seconds.</p></div><div class="header-actions">${operationsLink}</div></div><section class="card"><div id="approval-worklist" hx-get="/fragments/approvals" hx-trigger="load, every 15s" hx-swap="innerHTML"></div></section></main></html>`);
+}
+
+export async function decideReport(request: Request, env: Env, claims: Claims, reportId: string, correlationId: string) {
+  if (!requireRole(claims, ["regional_manager", "quality"])) return forbidden();
+  const report = await env.DB.prepare("SELECT store_id, status FROM reports WHERE id = ?").bind(reportId).first<{ store_id: string; status: string }>();
+  if (!report) return Response.json({ error: "Report not found" }, { status: 404 });
+  if (!canAccessStore(claims, report.store_id) || (claims.role === "regional_manager" && report.status !== "pending_regional") || (claims.role === "quality" && report.status !== "pending_quality")) return forbidden();
+
+  let input: { decision?: "approve" | "reject"; reason?: string };
+  try {
+    input = request.headers.get("content-type")?.includes("application/json") ? await request.json() : Object.fromEntries(await request.formData());
+  } catch {
+    return Response.json({ error: "Invalid decision" }, { status: 422 });
+  }
+  if (input.decision !== "approve" && input.decision !== "reject") return Response.json({ error: "Decision must be approve or reject" }, { status: 422 });
+
+  const response = await reportWorkflow(env, reportId).fetch("https://report-workflow/decision", {
+    method: "POST",
+    headers: { "X-Correlation-Id": correlationId },
+    body: JSON.stringify({ role: claims.role, actor: claims.user_id, decision: input.decision, reason: input.reason })
+  });
+  if (!response.ok) return new Response(response.body, response);
+  if (request.headers.get("HX-Request") === "true") return approvalsFragment(env, claims);
+
+  const updated = await env.DB.prepare("SELECT id, status, total_amount, rejection_reason FROM reports WHERE id = ?").bind(reportId).first<{ id: string; status: string; total_amount: number; rejection_reason: string | null }>();
+  return Response.json({ id: updated!.id, status: updated!.status, totalAmountCents: updated!.total_amount, rejectionReason: updated!.rejection_reason });
+}
