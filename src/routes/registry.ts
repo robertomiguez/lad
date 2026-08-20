@@ -1,5 +1,6 @@
 import { claimsFrom, forbidden, requireRole, unauthorized, type Claims } from "../auth";
 import type { Role } from "../domain/roles";
+import { jsonError } from "../lib/http";
 import { login, loginPage } from "./auth";
 import { approvalsFragment, approvalsPage, decideReport } from "./approvals";
 import { hello } from "./hello";
@@ -96,7 +97,7 @@ function matchRoute<T extends PublicRoute | ProtectedRoute>(
   return null;
 }
 
-const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
+const notFound = () => jsonError("Not found", 404);
 
 export async function dispatchRequest(request: Request, env: Env, correlationId: string): Promise<Response> {
   const { method } = request;

@@ -1,4 +1,4 @@
-import { escape, html } from "../lib/http";
+import { escape, html, jsonResponse } from "../lib/http";
 
 type SubmissionReport = {
   id: string;
@@ -20,12 +20,10 @@ type SubmissionStatus = {
   headers?: HeadersInit;
 };
 
-export const submissionJsonResponse = (body: unknown, status = 200) => Response.json(body, { status });
-
 export const submissionErrorResponse = (jsonRequest: boolean, error: SubmissionError) => {
   if (jsonRequest) {
     const body = error.error ? { error: error.error } : { errorCode: error.errorCode };
-    return submissionJsonResponse(body, error.status);
+    return jsonResponse(body, error.status);
   }
   return html(`<p class="error">${escape(error.message)}</p>`, error.status);
 };
@@ -36,7 +34,7 @@ export const submissionStatusResponse = (
   response: SubmissionStatus,
 ) => {
   if (jsonRequest)
-    return submissionJsonResponse(
+    return jsonResponse(
       {
         id: report.id,
         status: report.status,

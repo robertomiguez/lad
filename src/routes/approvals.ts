@@ -7,6 +7,7 @@ import {
   type ApprovalRole,
 } from "../domain/roles";
 import { REPORT_STATUS } from "../domain/reports";
+import { jsonError, jsonResponse } from "../lib/http";
 import { decideWorkflow, workflowDecisionStatus } from "../lib/workflow-client";
 import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
@@ -34,7 +35,7 @@ export async function decideReport(
   if (!requireRole(claims, APPROVAL_ROLES)) return forbidden();
   const reports = new ReportsRepository(env.DB);
   const report = await reports.findDecisionTarget(reportId);
-  if (!report) return Response.json({ error: "Report not found" }, { status: 404 });
+  if (!report) return jsonError("Report not found", 404);
   if (
     !roleCanAccessStore(claims.role, claims.store_id, report.store_id) ||
     (claims.role === ROLE.regionalManager && report.status !== REPORT_STATUS.pendingRegional) ||
@@ -48,10 +49,10 @@ export async function decideReport(
       ? await request.json()
       : Object.fromEntries(await request.formData());
   } catch {
-    return Response.json({ error: "Invalid decision" }, { status: 422 });
+    return jsonError("Invalid decision", 422);
   }
   if (input.decision !== "approve" && input.decision !== "reject")
-    return Response.json({ error: "Decision must be approve or reject" }, { status: 422 });
+    return jsonError("Decision must be approve or reject", 422);
 
   const response = await decideWorkflow(
     env,
@@ -59,11 +60,11 @@ export async function decideReport(
     { role: claims.role as ApprovalRole, actor: claims.user_id, decision: input.decision, reason: input.reason },
     correlationId,
   );
-  if (!response.ok) return Response.json({ error: response.error }, { status: workflowDecisionStatus(response.error) });
+  if (!response.ok) return jsonError(response.error, workflowDecisionStatus(response.error));
   if (request.headers.get("HX-Request") === "true") return approvalsFragment(env, claims);
 
   const updated = await reports.findDecisionResult(reportId);
-  return Response.json({
+  return jsonResponse({
     id: updated!.id,
     status: updated!.status,
     totalAmountCents: updated!.total_amount,
