@@ -43,6 +43,22 @@ describe("Worker integration", () => {
     await expect(response.json()).resolves.toEqual({ error: "Authentication required" });
   });
 
+  it("uses the route registry to distinguish unknown and role-protected routes", async () => {
+    const unauthenticated = await SELF.fetch("https://example.com/unknown-route");
+    expect(unauthenticated.status).toBe(401);
+
+    const regionalCookie = await login("user-regional-north");
+    const catalog = await SELF.fetch("https://example.com/api/products", {
+      headers: { cookie: regionalCookie },
+    });
+    expect(catalog.status).toBe(403);
+
+    const unknown = await SELF.fetch("https://example.com/unknown-route", {
+      headers: { cookie: regionalCookie },
+    });
+    expect(unknown.status).toBe(404);
+  });
+
   it("submits idempotently and routes a CHF 1,000 report through both approvals", async () => {
     const reportId = "report-lifecycle-1000";
     const payload = {
