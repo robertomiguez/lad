@@ -27,4 +27,12 @@ export class CreditNotesRepository {
       .prepare("UPDATE credit_notes SET status = 'created', erp_document_id = ? WHERE report_id = ?")
       .bind(erpDocumentId, reportId);
   }
+
+  retryFailedStatement(reportId: string) {
+    return this.db
+      .prepare(
+        "UPDATE credit_notes SET status = 'pending', erp_document_id = NULL WHERE report_id = ? AND status = 'failed'",
+      )
+      .bind(reportId);
+  }
 }
