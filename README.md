@@ -53,6 +53,9 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 | `npm run lint`                                 | Lint Worker TypeScript under `src/`.                            |
 | `npm run format:check`                         | Verify Prettier formatting across the repository.               |
 | `npm run format`                               | Apply Prettier formatting across the repository.                |
+| `npm run types`                                | Regenerate Cloudflare binding types after Wrangler changes.     |
+| `npm run types:check`                          | Verify generated Cloudflare binding types are current.          |
+| `npm run logs:tail`                            | Tail structured Worker logs as JSON in a second terminal.       |
 | `npx wrangler deploy --dry-run`                | Bundle and validate the deploy configuration without deploying. |
 
 ## Sign in and use the app
@@ -186,7 +189,7 @@ Sign in as Quinn Quality and open <http://localhost:8787/ops>. It lists:
 - pending or failed ERP writes; and
 - escalated approvals that remain unresolved.
 
-Every Worker response includes `X-Correlation-Id`. State transitions are emitted as JSON logs with the report ID, correlation ID, actor, from-state, and to-state. Retry defaults live in [src/lib/observability.ts](src/lib/observability.ts).
+Every Worker response includes `X-Correlation-Id`. State transitions are emitted as JSON logs with the report ID, correlation ID, actor, from-state, and to-state. Wrangler enables full observability sampling for this POC, so use `npm run logs:tail` during a customer demo to follow the same correlation ID through the Worker, Durable Object, and Queue consumer. Retry defaults live in [src/lib/observability.ts](src/lib/observability.ts).
 
 If the local app does not start:
 
