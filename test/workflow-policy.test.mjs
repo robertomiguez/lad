@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { initialWorkflowStatus, statusAfterRegionalApproval } from "../.test-build/workflow-policy.js";
+import { initialWorkflowStatus, statusAfterRegionalApproval } from "../.test-build/lib/workflow-policy.js";
 
 test("reports below CHF 200 auto-approve when the POC assumption is enabled", () => {
   assert.equal(initialWorkflowStatus(19_999, true), "approved");

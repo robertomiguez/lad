@@ -1,4 +1,6 @@
 import { forbidden, requireRole, type Claims } from "../auth";
+import { REPORT_STATUS } from "../domain/reports";
+import { ROLE } from "../domain/roles";
 import { escape, html } from "../lib/http";
 import { initializeWorkflow } from "../lib/workflow-client";
 import { logError, logTransition } from "../lib/observability";
@@ -47,7 +49,7 @@ async function validationError(env: Env, submission: Submission) {
 }
 
 export async function createReport(request: Request, env: Env, claims: Claims, correlationId: string) {
-  if (!requireRole(claims, ["store"])) return forbidden();
+  if (!requireRole(claims, [ROLE.store])) return forbidden();
   const jsonRequest = request.headers.get("content-type")?.includes("application/json") ?? false;
   let submission: Submission | null;
   try {
@@ -68,8 +70,8 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
   const kvHit = await env.IDEMPOTENCY.get(`report:${reportId}`);
   const existing = kvHit ? await existingReport(env, claims, reportId) : await env.DB.prepare("SELECT key FROM idempotency_keys WHERE key = ?").bind(reportId).first() ? await existingReport(env, claims, reportId) : null;
   if (existing === "forbidden") return forbidden();
-  if (existing && existing.status !== "sync_error") {
-    if (existing.status === "submitted") {
+  if (existing && existing.status !== REPORT_STATUS.syncError) {
+    if (existing.status === REPORT_STATUS.submitted) {
       const workflowResponse = await initializeWorkflow(env, submission, correlationId);
       if (!workflowResponse.ok) return jsonRequest ? Response.json({ errorCode: "workflow_initialization_failed" }, { status: 503 }) : html(`<p class="error">Report saved; retrying approval setup.</p>`, 503);
     }
@@ -80,7 +82,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
 
   const errorCode = await validationError(env, submission);
   const timestamp = new Date().toISOString();
-  if (existing?.status === "sync_error") {
+  if (existing?.status === REPORT_STATUS.syncError) {
     if (errorCode) {
       await env.DB.prepare("UPDATE reports SET validation_error_code = ?, updated_at = ? WHERE id = ?").bind(errorCode, timestamp, reportId).run();
       logError(correlationId, "worker", errorCode, reportId);
@@ -91,9 +93,9 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
       await env.DB.batch([
         ...items.map(item => env.DB.prepare("INSERT OR IGNORE INTO line_items (id, report_id, product_id, quantity, reason_code, photo_id) VALUES (?, ?, ?, ?, ?, ?)").bind(item.id, reportId, item.productId, item.quantity, item.reasonCode, item.photoId ?? null)),
         ...items.filter(item => item.photoId).map(item => env.DB.prepare("INSERT OR IGNORE INTO photos (id, line_item_id, r2_key, status) VALUES (?, ?, ?, 'pending')").bind(item.photoId!, item.id, `pending/${reportId}/${item.photoId}`)),
-        env.DB.prepare("UPDATE reports SET status = 'submitted', validation_error_code = NULL, updated_at = ? WHERE id = ?").bind(timestamp, reportId)
+        env.DB.prepare("UPDATE reports SET status = ?, validation_error_code = NULL, updated_at = ? WHERE id = ?").bind(REPORT_STATUS.submitted, timestamp, reportId)
       ]);
-      logTransition({ reportId, correlationId, fromStatus: "sync_error", toStatus: "submitted", actor: claims.user_id, component: "worker" });
+      logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.syncError, toStatus: REPORT_STATUS.submitted, actor: claims.user_id, component: "worker" });
       const workflowResponse = await initializeWorkflow(env, submission, correlationId);
       if (!workflowResponse.ok) return jsonRequest ? Response.json({ errorCode: "workflow_initialization_failed" }, { status: 503 }) : html(`<p class="error">Report saved; retrying approval setup.</p>`, 503);
       const recovered = await existingReport(env, claims, reportId);
@@ -107,21 +109,21 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
   if (errorCode) {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO idempotency_keys (key, first_seen_at) VALUES (?, ?)").bind(reportId, timestamp),
-      env.DB.prepare("INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at, validation_error_code) VALUES (?, ?, ?, 'sync_error', ?, ?, ?, ?)").bind(reportId, storeId, reporterId, totalAmountCents, timestamp, timestamp, errorCode)
+      env.DB.prepare("INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at, validation_error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(reportId, storeId, reporterId, REPORT_STATUS.syncError, totalAmountCents, timestamp, timestamp, errorCode)
     ]);
     await env.IDEMPOTENCY.put(`report:${reportId}`, reportId, { expirationTtl: 86_400 });
-    logTransition({ reportId, correlationId, fromStatus: "pending_sync", toStatus: "sync_error", actor: claims.user_id, component: "worker", reason: errorCode });
-    const failed = { id: reportId, status: "sync_error", total_amount: totalAmountCents, validation_error_code: errorCode };
+    logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.pendingSync, toStatus: REPORT_STATUS.syncError, actor: claims.user_id, component: "worker", reason: errorCode });
+    const failed = { id: reportId, status: REPORT_STATUS.syncError, total_amount: totalAmountCents, validation_error_code: errorCode };
     return jsonRequest ? reportJson(failed, 422) : html(`<p class="error">Report needs attention: ${escape(errorCode)}.</p>`, 422);
   }
 
   try {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO idempotency_keys (key, first_seen_at) VALUES (?, ?)").bind(reportId, timestamp),
-      env.DB.prepare("INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, 'pending_sync', ?, ?, ?)").bind(reportId, storeId, reporterId, totalAmountCents, timestamp, timestamp),
+      env.DB.prepare("INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(reportId, storeId, reporterId, REPORT_STATUS.pendingSync, totalAmountCents, timestamp, timestamp),
       ...items.map(item => env.DB.prepare("INSERT INTO line_items (id, report_id, product_id, quantity, reason_code, photo_id) VALUES (?, ?, ?, ?, ?, ?)").bind(item.id, reportId, item.productId, item.quantity, item.reasonCode, item.photoId ?? null)),
       ...items.filter(item => item.photoId).map(item => env.DB.prepare("INSERT OR IGNORE INTO photos (id, line_item_id, r2_key, status) VALUES (?, ?, ?, 'pending')").bind(item.photoId!, item.id, `pending/${reportId}/${item.photoId}`)),
-      env.DB.prepare("UPDATE reports SET status = 'submitted', updated_at = ? WHERE id = ?").bind(timestamp, reportId)
+      env.DB.prepare("UPDATE reports SET status = ?, updated_at = ? WHERE id = ?").bind(REPORT_STATUS.submitted, timestamp, reportId)
     ]);
   } catch {
     const replay = await existingReport(env, claims, reportId);
@@ -129,7 +131,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
     return jsonRequest ? Response.json({ errorCode: "save_failed" }, { status: 422 }) : html(`<p class="error">Unable to save the report. Check the selected products and try again.</p>`, 422);
   }
   await env.IDEMPOTENCY.put(`report:${reportId}`, reportId, { expirationTtl: 86_400 });
-  logTransition({ reportId, correlationId, fromStatus: "pending_sync", toStatus: "submitted", actor: claims.user_id, component: "worker" });
+  logTransition({ reportId, correlationId, fromStatus: REPORT_STATUS.pendingSync, toStatus: REPORT_STATUS.submitted, actor: claims.user_id, component: "worker" });
   const workflowResponse = await initializeWorkflow(env, submission, correlationId);
   if (!workflowResponse.ok) return jsonRequest ? Response.json({ errorCode: "workflow_initialization_failed" }, { status: 503 }) : html(`<p class="error">Report saved but needs attention before approval.</p>`, 503);
   const created = await existingReport(env, claims, reportId);
@@ -138,7 +140,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
 }
 
 export async function uploadPhoto(request: Request, env: Env, claims: Claims, reportId: string, lineItemId: string, correlationId: string) {
-  if (!requireRole(claims, ["store"])) return forbidden();
+  if (!requireRole(claims, [ROLE.store])) return forbidden();
   const photoId = request.headers.get("X-Photo-Id") ?? "";
   const contentType = request.headers.get("content-type") ?? "";
   if (!/^[a-zA-Z0-9-]{8,80}$/.test(photoId) || !contentType.startsWith("image/")) return Response.json({ errorCode: "invalid_photo_payload" }, { status: 422 });
