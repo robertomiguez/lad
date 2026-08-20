@@ -1,5 +1,6 @@
 import { escape, html } from "../lib/http";
 import type { ApprovalReport } from "../repositories/reports";
+import { pageDocument, pageHeaderView, secondaryLinkView, topBarView } from "./layout";
 
 export const approvalWorklistView = (reports: ApprovalReport[]) =>
   html(
@@ -14,8 +15,9 @@ export const approvalWorklistView = (reports: ApprovalReport[]) =>
   );
 
 export const approvalsPageView = (approverRoleLabel: string, showOperationsLink: boolean) => {
-  const operationsLink = showOperationsLink ? '<a class="button button-secondary" href="/ops">Operations</a>' : "";
-  return html(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Approval worklist</title><link rel="stylesheet" href="/styles.css"><script src="https://unpkg.com/htmx.org@2.0.4"></script><header class="topbar"><span class="brand"><span class="brand-mark">DR</span>Damage Reporting</span><span class="session">Signed in as <strong>${escape(approverRoleLabel)}</strong></span><a class="button back-button" href="/">Back</a></header><main class="page"><div class="page-header"><div><p class="eyebrow">Approval queue</p><h1>Approval worklist</h1><p class="lede">Review reports assigned to your role. This list refreshes automatically every 15 seconds.</p></div><div class="header-actions">${operationsLink}</div></div><section class="card"><div id="approval-worklist" hx-get="/fragments/approvals" hx-trigger="load, every 15s" hx-swap="innerHTML"></div></section></main></html>`,
-  );
+  return pageDocument({
+    title: "Approval worklist",
+    scripts: [{ src: "https://unpkg.com/htmx.org@2.0.4" }],
+    body: `${topBarView({ session: "Signed in as", emphasis: approverRoleLabel, backHref: "/" })}<main class="page">${pageHeaderView({ eyebrow: "Approval queue", title: "Approval worklist", lede: "Review reports assigned to your role. This list refreshes automatically every 15 seconds.", actions: showOperationsLink ? secondaryLinkView("/ops", "Operations") : undefined })}<section class="card"><div id="approval-worklist" hx-get="/fragments/approvals" hx-trigger="load, every 15s" hx-swap="innerHTML"></div></section></main>`,
+  });
 };

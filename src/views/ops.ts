@@ -1,6 +1,7 @@
 import { REPORT_STATUS } from "../domain/reports";
 import { escape, html } from "../lib/http";
 import type { OpsReport } from "../repositories/reports";
+import { pageDocument, pageHeaderView, secondaryLinkView, topBarView } from "./layout";
 
 export const opsWorklistView = (reports: OpsReport[]) =>
   html(
@@ -15,6 +16,8 @@ export const opsWorklistView = (reports: OpsReport[]) =>
   );
 
 export const opsPageView = () =>
-  html(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Damage Reporting operations</title><link rel="stylesheet" href="/styles.css"><script src="https://unpkg.com/htmx.org@2.0.4"></script><header class="topbar"><span class="brand"><span class="brand-mark">DR</span>Damage Reporting</span><span class="session">Quality operations</span></header><main class="page"><div class="page-header"><div><p class="eyebrow">Operations</p><h1>Reports needing attention</h1><p class="lede">Validation/sync errors, pending or failed ERP writes, and overdue approvals.</p></div><div class="header-actions"><a class="button button-secondary" href="/approvals">Approval worklist</a></div></div><section class="card"><div id="ops-worklist" hx-get="/fragments/ops" hx-trigger="load, every 15s" hx-swap="innerHTML"></div></section></main></html>`,
-  );
+  pageDocument({
+    title: "Damage Reporting operations",
+    scripts: [{ src: "https://unpkg.com/htmx.org@2.0.4" }],
+    body: `${topBarView({ session: "Quality operations" })}<main class="page">${pageHeaderView({ eyebrow: "Operations", title: "Reports needing attention", lede: "Validation/sync errors, pending or failed ERP writes, and overdue approvals.", actions: secondaryLinkView("/approvals", "Approval worklist") })}<section class="card"><div id="ops-worklist" hx-get="/fragments/ops" hx-trigger="load, every 15s" hx-swap="innerHTML"></div></section></main>`,
+  });
