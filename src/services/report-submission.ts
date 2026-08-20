@@ -114,7 +114,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
   if (existing && existing.status !== REPORT_STATUS.syncError) {
     if (existing.status === REPORT_STATUS.submitted) {
       const workflowResponse = await initializeWorkflow(env, submission, correlationId);
-      if (!workflowResponse.ok)
+      if (!workflowResponse)
         return jsonRequest
           ? Response.json({ errorCode: "workflow_initialization_failed" }, { status: 503 })
           : html(`<p class="error">Report saved; retrying approval setup.</p>`, 503);
@@ -149,7 +149,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
         component: "worker",
       });
       const workflowResponse = await initializeWorkflow(env, submission, correlationId);
-      if (!workflowResponse.ok)
+      if (!workflowResponse)
         return jsonRequest
           ? Response.json({ errorCode: "workflow_initialization_failed" }, { status: 503 })
           : html(`<p class="error">Report saved; retrying approval setup.</p>`, 503);
@@ -211,7 +211,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
     component: "worker",
   });
   const workflowResponse = await initializeWorkflow(env, submission, correlationId);
-  if (!workflowResponse.ok)
+  if (!workflowResponse)
     return jsonRequest
       ? Response.json({ errorCode: "workflow_initialization_failed" }, { status: 503 })
       : html(`<p class="error">Report saved but needs attention before approval.</p>`, 503);

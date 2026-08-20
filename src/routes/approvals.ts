@@ -8,7 +8,7 @@ import {
 } from "../domain/roles";
 import { REPORT_STATUS } from "../domain/reports";
 import { escape, html } from "../lib/http";
-import { reportWorkflow } from "../lib/workflow-client";
+import { decideWorkflow, workflowDecisionStatus } from "../lib/workflow-client";
 import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 
@@ -61,12 +61,13 @@ export async function decideReport(
   if (input.decision !== "approve" && input.decision !== "reject")
     return Response.json({ error: "Decision must be approve or reject" }, { status: 422 });
 
-  const response = await reportWorkflow(env, reportId).fetch("https://report-workflow/decision", {
-    method: "POST",
-    headers: { "X-Correlation-Id": correlationId },
-    body: JSON.stringify({ role: claims.role, actor: claims.user_id, decision: input.decision, reason: input.reason }),
-  });
-  if (!response.ok) return new Response(response.body, response);
+  const response = await decideWorkflow(
+    env,
+    reportId,
+    { role: claims.role as ApprovalRole, actor: claims.user_id, decision: input.decision, reason: input.reason },
+    correlationId,
+  );
+  if (!response.ok) return Response.json({ error: response.error }, { status: workflowDecisionStatus(response.error) });
   if (request.headers.get("HX-Request") === "true") return approvalsFragment(env, claims);
 
   const updated = await reports.findDecisionResult(reportId);
