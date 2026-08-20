@@ -51,7 +51,7 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 | `npm run db:simulate:deactivate-product:local` | Make `SKU-200` inactive for the offline-validation demo.        |
 | `npm run db:simulate:reactivate-product:local` | Restore `SKU-200`.                                              |
 | `npm run typecheck`                            | Type-check the Worker.                                          |
-| `npm test`                                     | Run the workflow-policy and barcode/SKU matching tests.         |
+| `npm test`                                     | Run the unit suite and Worker integration tests.                |
 | `npm run lint`                                 | Lint Worker TypeScript under `src/`.                            |
 | `npm run format:check`                         | Verify Prettier formatting across the repository.               |
 | `npm run format`                               | Apply Prettier formatting across the repository.                |
