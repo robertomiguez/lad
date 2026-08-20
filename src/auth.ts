@@ -1,4 +1,6 @@
-export type Role = "store" | "regional_manager" | "quality";
+import { isRole, type Role } from "./domain/roles";
+
+export type { Role } from "./domain/roles";
 export type Claims = { user_id: string; role: Role; store_id: string | null; exp: number };
 export type AuthEnv = { JWT_SECRET: string };
 
@@ -26,13 +28,10 @@ export async function claimsFrom(request: Request, env: AuthEnv): Promise<Claims
     const valid = await crypto.subtle.verify("HMAC", await signingKey(env.JWT_SECRET), fromBase64url(signature), encoder.encode(`${header}.${payload}`));
     if (!valid) return null;
     const claims = JSON.parse(decode.decode(fromBase64url(payload))) as Claims;
-    return claims.exp > Date.now() / 1000 && ["store", "regional_manager", "quality"].includes(claims.role) ? claims : null;
+    return claims.exp > Date.now() / 1000 && isRole(claims.role) ? claims : null;
   } catch { return null; }
 }
 
 export const unauthorized = () => Response.json({ error: "Authentication required" }, { status: 401 });
 export const forbidden = () => Response.json({ error: "You do not have permission for this action" }, { status: 403 });
-export const requireRole = (claims: Claims, roles: Role[]) => roles.includes(claims.role);
-
-/** Regional approvers can only access their own store; quality is cross-store. */
-export const canAccessStore = (claims: Claims, storeId: string) => claims.role === "quality" || claims.store_id === storeId;
+export const requireRole = (claims: Claims, roles: readonly Role[]) => roles.includes(claims.role);

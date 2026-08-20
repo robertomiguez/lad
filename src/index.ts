@@ -1,4 +1,5 @@
 import { claimsFrom, requireRole, unauthorized } from "./auth";
+import { ROLE } from "./domain/roles";
 import { ReportWorkflow } from "./durable-objects/report-workflow";
 import { withCorrelation } from "./lib/http";
 import { logError } from "./lib/observability";
@@ -23,9 +24,9 @@ async function routeRequest(request: Request, env: Env, correlationId: string): 
   if (request.method === "GET" && pathname === "/app") return appPage(env, claims);
   if (request.method === "GET" && pathname === "/approvals") return approvalsPage(claims);
   if (request.method === "GET" && pathname === "/ops") return opsPage(claims);
-  if (request.method === "GET" && pathname === "/fragments/line-item" && requireRole(claims, ["store"])) return lineItemRow(env);
-  if (request.method === "GET" && pathname === "/api/products" && requireRole(claims, ["store"])) return productsResponse(env);
-  if (request.method === "GET" && pathname === "/api/reports" && requireRole(claims, ["store"])) return myReports(env, claims);
+  if (request.method === "GET" && pathname === "/fragments/line-item" && requireRole(claims, [ROLE.store])) return lineItemRow(env);
+  if (request.method === "GET" && pathname === "/api/products" && requireRole(claims, [ROLE.store])) return productsResponse(env);
+  if (request.method === "GET" && pathname === "/api/reports" && requireRole(claims, [ROLE.store])) return myReports(env, claims);
   if (request.method === "GET" && pathname === "/api/reports/statuses") return reportStatuses(env, claims);
   if (request.method === "GET" && pathname === "/fragments/approvals") return approvalsFragment(env, claims);
   if (request.method === "GET" && pathname === "/fragments/ops") return opsFragment(env, claims);
