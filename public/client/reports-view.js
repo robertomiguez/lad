@@ -58,7 +58,7 @@ export function createReportsRenderer({
     thumbnailUrls = [];
     const [reports, photos, products] = await Promise.all([allReports(), allPhotos(), allProducts()]);
     const skuByProductId = new Map(products.map((product) => [product.id, product.sku]));
-    reports.sort((left, right) => right.savedAt.localeCompare(left.savedAt));
+    reports.sort((left, right) => (right.updatedAt || right.savedAt).localeCompare(left.updatedAt || left.savedAt));
     root.replaceChildren(
       ...(reports.length
         ? reports.map((report) => {
