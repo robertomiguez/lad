@@ -260,6 +260,7 @@ const discardDraft = async (draft) => {
 
 const renderReports = createReportsRenderer({
   allPhotos: allLocalPhotos,
+  allProducts: allLocalProducts,
   allReports: allLocalReports,
   requestSync,
   onEditDraft: editDraft,
