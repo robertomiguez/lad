@@ -90,6 +90,7 @@ const addLineItem = (item = {}) => {
 
 const resetReportForm = (form) => {
   form.reset();
+  delete form.dataset.createdAt;
   form.elements.report_id.value = makeId();
   form.elements.report_date.value = new Date().toISOString().slice(0, 10);
   const destination = document.querySelector("#line-items");
@@ -223,6 +224,7 @@ const editDraft = async (draft) => {
   }
   (draft.items?.length ? draft.items : [{}]).forEach(addLineItem);
   form.elements.report_id.value = draft.id;
+  form.dataset.createdAt = draft.createdAt || draft.savedAt;
   form.elements.report_date.value = draft.reportDate || "";
   form.elements.total_amount.value = Number.isInteger(draft.totalAmountCents)
     ? (draft.totalAmountCents / 100).toFixed(2)
@@ -271,7 +273,10 @@ const saveDraft = async () => {
   const form = document.querySelector("#report-form");
   if (!form) return;
   const draft = await collectReport(form);
-  await saveLocalReport({ ...draft, status: "draft", savedAt: new Date().toISOString() });
+  const updatedAt = new Date().toISOString();
+  const createdAt = form.dataset.createdAt || updatedAt;
+  await saveLocalReport({ ...draft, status: "draft", createdAt, updatedAt, savedAt: updatedAt });
+  form.dataset.createdAt = createdAt;
   await removeUnusedDraftPhotos(draft.id, draft.items);
   document.querySelector("#form-errors").textContent = "";
   showFormFeedback("Draft saved on this device. It will not sync until you submit it.", 5_000);
