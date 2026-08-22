@@ -24,9 +24,31 @@ const formatRole = (role) =>
 const formatAmount = (amountCents) =>
   Number.isInteger(amountCents) ? `CHF ${(amountCents / 100).toFixed(2)}` : "Amount not set";
 
+const formatCreatedAt = (timestamp) => {
+  const createdAt = new Date(timestamp);
+  if (Number.isNaN(createdAt.getTime())) return "Date unavailable";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(createdAt);
+};
+
+const formatSkus = (skus) => (Array.isArray(skus) && skus.length ? skus.join(", ") : null);
+
 const shortReportId = (id) => `${id.slice(0, 7)}...`;
 
-export function createReportsRenderer({ allPhotos, allReports, requestSync, onEditDraft, onDiscardDraft }) {
+export function createReportsRenderer({
+  allPhotos,
+  allProducts,
+  allReports,
+  requestSync,
+  onEditDraft,
+  onDiscardDraft,
+}) {
   let thumbnailUrls = [];
 
   return async function renderReports() {
@@ -34,7 +56,8 @@ export function createReportsRenderer({ allPhotos, allReports, requestSync, onEd
     if (!root) return;
     thumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
     thumbnailUrls = [];
-    const [reports, photos] = await Promise.all([allReports(), allPhotos()]);
+    const [reports, photos, products] = await Promise.all([allReports(), allPhotos(), allProducts()]);
+    const skuByProductId = new Map(products.map((product) => [product.id, product.sku]));
     reports.sort((left, right) => right.savedAt.localeCompare(left.savedAt));
     root.replaceChildren(
       ...(reports.length
@@ -53,10 +76,23 @@ export function createReportsRenderer({ allPhotos, allReports, requestSync, onEd
               reference.href = `/reports/${encodeURIComponent(report.id)}`;
               reference.setAttribute("aria-label", `View report ${report.id}`);
             }
-            summary.append(
-              reference,
-              document.createTextNode(` · ${workflow} · ${formatAmount(report.totalAmountCents)}`),
-            );
+            const primary = document.createElement("div");
+            primary.className = "report-summary-primary";
+            const created = document.createElement("span");
+            created.className = "report-created";
+            created.textContent = `Created: ${formatCreatedAt(report.createdAt || report.savedAt)}`;
+            primary.append(reference, created);
+            const skus = formatSkus(report.skus);
+            if (skus) {
+              const sku = document.createElement("span");
+              sku.className = "report-skus";
+              sku.textContent = `SKU: ${skus}`;
+              primary.append(sku);
+            }
+            const status = document.createElement("div");
+            status.className = "report-summary-status";
+            status.textContent = `${workflow} · ${formatAmount(report.totalAmountCents)}`;
+            summary.append(primary, status);
             item.append(summary);
             const details = document.createElement("div");
             details.className = "report-details";
@@ -73,17 +109,19 @@ export function createReportsRenderer({ allPhotos, allReports, requestSync, onEd
             for (const photo of reportPhotos) {
               const detail = document.createElement("div");
               detail.className = "photo-detail";
+              const lineItem = report.items?.find((candidate) => candidate.id === photo.lineItemId);
+              const sku = lineItem ? skuByProductId.get(lineItem.productId) : undefined;
               if (photo.blob instanceof Blob) {
                 const image = document.createElement("img");
                 const thumbnailUrl = URL.createObjectURL(photo.blob);
                 thumbnailUrls.push(thumbnailUrl);
                 image.className = "photo-thumbnail";
                 image.src = thumbnailUrl;
-                image.alt = "Damage photo";
+                image.alt = sku ? `Damage photo for ${sku}` : "Damage photo";
                 detail.append(image);
               }
               const label = document.createElement("span");
-              label.textContent = `Photo: ${formatPhotoStatus(photo.status)}`;
+              label.textContent = `${sku || "SKU unavailable"} · ${formatPhotoStatus(photo.status)}`;
               detail.append(label);
               details.append(detail);
             }

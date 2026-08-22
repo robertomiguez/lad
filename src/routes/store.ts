@@ -48,6 +48,7 @@ export async function reportStatuses(env: Env, claims: Claims) {
       status: report.status,
       totalAmountCents: report.total_amount,
       createdAt: report.created_at,
+      skus: report.skus?.split(",") ?? [],
       escalatedAt: report.escalated_at,
       escalationTargetRole: report.escalation_target_role,
       rejectionReason: report.rejection_reason,

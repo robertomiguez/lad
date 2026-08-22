@@ -126,11 +126,14 @@ const refreshStatuses = async () => {
         id: remote.id,
         status: "synced",
         savedAt: remote.createdAt,
+        createdAt: remote.createdAt,
         totalAmountCents: remote.totalAmountCents,
         items: [],
       };
       report.totalAmountCents = remote.totalAmountCents;
       report.savedAt = report.savedAt || remote.createdAt;
+      report.createdAt = remote.createdAt;
+      report.skus = remote.skus;
       report.workflowStatus = remote.status;
       report.escalated = Boolean(remote.escalatedAt);
       report.escalationTargetRole = remote.escalationTargetRole;

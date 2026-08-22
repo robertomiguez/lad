@@ -34,6 +34,7 @@ export type StoreReportStatus = {
   status: string;
   total_amount: number;
   created_at: string;
+  skus: string | null;
   escalated_at: string | null;
   escalation_target_role: string | null;
   rejection_reason: string | null;
@@ -103,7 +104,7 @@ export class ReportsRepository {
     return (
       await this.db
         .prepare(
-          "SELECT id, status, total_amount, created_at, escalated_at, escalation_target_role, rejection_reason FROM reports WHERE store_id = ? ORDER BY updated_at DESC",
+          "SELECT r.id, r.status, r.total_amount, r.created_at, GROUP_CONCAT(DISTINCT p.sku) AS skus, r.escalated_at, r.escalation_target_role, r.rejection_reason FROM reports r LEFT JOIN line_items li ON li.report_id = r.id LEFT JOIN products p ON p.id = li.product_id WHERE r.store_id = ? GROUP BY r.id ORDER BY r.updated_at DESC",
         )
         .bind(storeId)
         .all<StoreReportStatus>()

@@ -434,15 +434,31 @@ h2 {
   content: "";
 }
 .report-summary {
+  display: grid;
+  gap: 0.25rem;
   color: var(--ink);
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+.report-summary-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
 }
 .report-reference {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 span.report-reference {
   color: var(--ink);
+}
+.report-created,
+.report-skus,
+.report-summary-status {
+  font-weight: 600;
+}
+.report-created {
+  color: var(--muted);
 }
 .report-details {
   display: grid;
