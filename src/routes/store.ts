@@ -1,11 +1,11 @@
 import { forbidden, requireRole, type Claims } from "../auth";
 import { ROLE } from "../domain/roles";
-import { jsonResponse } from "../lib/http";
+import { jsonError, jsonResponse } from "../lib/http";
 import { CatalogRepository } from "../repositories/catalog";
 import { ReportsRepository } from "../repositories/reports";
 import { UsersRepository } from "../repositories/users";
 import type { Env } from "../types";
-import { lineItemView, myReportsView, storeAppView } from "../views/store";
+import { lineItemView, myReportsView, reportDetailsView, storeAppView } from "../views/store";
 
 async function products(env: Env) {
   return new CatalogRepository(env.DB).listActiveProducts();
@@ -28,6 +28,15 @@ export async function appPage(env: Env, claims: Claims) {
 export async function myReports(env: Env, claims: Claims) {
   const results = await new ReportsRepository(env.DB).listForStore(claims.store_id);
   return myReportsView(results);
+}
+
+export async function reportDetailsPage(env: Env, claims: Claims, reportId: string) {
+  if (!requireRole(claims, [ROLE.store])) return forbidden();
+  const reports = new ReportsRepository(env.DB);
+  const detail = await reports.findDetailForStore(reportId, claims.store_id);
+  if (!detail) return jsonError("Report not found", 404);
+  const user = await new UsersRepository(env.DB).findStoreWorkspace(claims.user_id);
+  return reportDetailsView(claims, user, detail.report, detail.items);
 }
 
 export async function reportStatuses(env: Env, claims: Claims) {

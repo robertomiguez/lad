@@ -22,10 +22,53 @@ const productCatalog = createProductCatalog({
   saveProduct: saveLocalProduct,
 });
 
+let feedbackTimeout;
+
+const showFormFeedback = (message, duration = 0) => {
+  const feedback = document.querySelector("#form-feedback");
+  if (!feedback) return;
+  clearTimeout(feedbackTimeout);
+  feedback.textContent = message;
+  if (duration) {
+    feedbackTimeout = setTimeout(() => {
+      if (feedback.textContent === message) feedback.textContent = "";
+    }, duration);
+  }
+};
+
+const confirmAction = ({ title, message, confirmLabel = "Confirm", destructive = false }) => {
+  const dialog = document.querySelector("#confirmation-dialog");
+  const heading = document.querySelector("#confirmation-title");
+  const body = document.querySelector("#confirmation-message");
+  const confirmButton = document.querySelector("#confirmation-confirm");
+  if (!(dialog instanceof HTMLDialogElement) || !heading || !body || !(confirmButton instanceof HTMLButtonElement))
+    return Promise.resolve(false);
+
+  heading.textContent = title;
+  body.textContent = message;
+  confirmButton.textContent = confirmLabel;
+  confirmButton.classList.toggle("destructive-action", destructive);
+  dialog.returnValue = "";
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "confirm"), { once: true });
+    dialog.showModal();
+  });
+};
+
 const assignLineIds = (root) =>
   root.querySelectorAll("[data-line-id]").forEach((input) => {
     if (!input.value) input.value = makeId();
   });
+
+const updateRemoveItemControls = () => {
+  const disableRemove = document.querySelectorAll(".line-item").length <= 1;
+  document.querySelectorAll(".remove-line").forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = disableRemove;
+      button.title = disableRemove ? "At least one damaged item is required" : "Remove item";
+    }
+  });
+};
 
 const addLineItem = (item = {}) => {
   const template = document.querySelector("#line-item-template");
@@ -41,6 +84,7 @@ const addLineItem = (item = {}) => {
   if (item.photoId) row.dataset.photoId = item.photoId;
   destination.append(fragment);
   productCatalog.apply(destination);
+  updateRemoveItemControls();
   return row;
 };
 
@@ -49,8 +93,65 @@ const resetReportForm = (form) => {
   form.elements.report_id.value = makeId();
   form.elements.report_date.value = new Date().toISOString().slice(0, 10);
   const destination = document.querySelector("#line-items");
-  if (destination) destination.replaceChildren();
+  if (destination) {
+    destination.querySelectorAll(".line-item").forEach(clearPhotoPreview);
+    destination.replaceChildren();
+  }
   addLineItem();
+};
+
+const clearPhotoPreview = (row) => {
+  const preview = row.querySelector("[data-photo-preview]");
+  if (!(preview instanceof HTMLImageElement)) return;
+  if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+  delete preview.dataset.objectUrl;
+  preview.removeAttribute("src");
+  preview.hidden = true;
+};
+
+const showPhotoPreview = (input) => {
+  const row = input.closest(".line-item");
+  const preview = row?.querySelector("[data-photo-preview]");
+  if (!(preview instanceof HTMLImageElement)) return;
+  clearPhotoPreview(row);
+  const file = input.files?.[0];
+  if (!file) return;
+  const objectUrl = URL.createObjectURL(file);
+  preview.src = objectUrl;
+  preview.dataset.objectUrl = objectUrl;
+  preview.hidden = false;
+};
+
+const setEditorActive = (form, active) => {
+  const editor = form.querySelector("#report-editor");
+  const newReport = document.querySelector("#new-report");
+  const formCard = form.closest(".form-card");
+  if (editor instanceof HTMLFieldSetElement) {
+    editor.disabled = !active;
+    editor.hidden = !active;
+  }
+  if (newReport instanceof HTMLButtonElement) newReport.hidden = active;
+  if (formCard instanceof HTMLElement) formCard.hidden = !active;
+  form.closest(".capture-grid")?.classList.toggle("editor-active", active);
+};
+
+const startNewReport = () => {
+  const form = document.querySelector("#report-form");
+  if (!form) return;
+  resetReportForm(form);
+  setEditorActive(form, true);
+  document.querySelector("#form-errors").textContent = "";
+  showFormFeedback("");
+  form.elements.report_date.focus();
+};
+
+const cancelEditing = () => {
+  const form = document.querySelector("#report-form");
+  if (!form) return;
+  resetReportForm(form);
+  setEditorActive(form, false);
+  document.querySelector("#form-errors").textContent = "";
+  showFormFeedback("Editing cancelled. No changes were saved.", 5_000);
 };
 
 const collectReport = async (form) => {
@@ -116,31 +217,44 @@ const editDraft = async (draft) => {
   const form = document.querySelector("#report-form");
   if (!form) return;
   const destination = document.querySelector("#line-items");
-  if (destination) destination.replaceChildren();
+  if (destination) {
+    destination.querySelectorAll(".line-item").forEach(clearPhotoPreview);
+    destination.replaceChildren();
+  }
   (draft.items?.length ? draft.items : [{}]).forEach(addLineItem);
   form.elements.report_id.value = draft.id;
   form.elements.report_date.value = draft.reportDate || "";
   form.elements.total_amount.value = Number.isInteger(draft.totalAmountCents)
     ? (draft.totalAmountCents / 100).toFixed(2)
     : "";
+  setEditorActive(form, true);
   document.querySelector("#form-errors").textContent = "";
-  document.querySelector("#form-feedback").textContent =
-    "Editing draft. Submit it when all required fields are complete.";
-  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  showFormFeedback("");
   form.elements.report_date.focus();
 };
 
 const discardDraft = async (draft) => {
-  if (!confirm("Discard this draft and its local photos?")) return;
+  if (
+    !(await confirmAction({
+      title: "Discard draft?",
+      message: "This removes the draft and its local photos from this device. This cannot be undone.",
+      confirmLabel: "Discard draft",
+      destructive: true,
+    }))
+  )
+    return;
   const photos = await allLocalPhotos();
   await Promise.all([
     deleteLocalReport(draft.id),
     ...photos.filter((photo) => photo.reportId === draft.id).map((photo) => deleteLocalPhoto(photo.id)),
   ]);
   const form = document.querySelector("#report-form");
-  if (form?.elements.report_id.value === draft.id) resetReportForm(form);
+  if (form?.elements.report_id.value === draft.id) {
+    resetReportForm(form);
+    setEditorActive(form, false);
+  }
   document.querySelector("#form-errors").textContent = "";
-  document.querySelector("#form-feedback").textContent = "Draft discarded from this device.";
+  showFormFeedback("Draft discarded from this device.", 5_000);
   await renderReports();
 };
 
@@ -159,9 +273,9 @@ const saveDraft = async () => {
   await saveLocalReport({ ...draft, status: "draft", savedAt: new Date().toISOString() });
   await removeUnusedDraftPhotos(draft.id, draft.items);
   document.querySelector("#form-errors").textContent = "";
-  document.querySelector("#form-feedback").textContent =
-    "Draft saved on this device. It will not sync until you submit it.";
+  showFormFeedback("Draft saved on this device. It will not sync until you submit it.", 5_000);
   resetReportForm(form);
+  setEditorActive(form, false);
   await renderReports();
 };
 
@@ -170,9 +284,8 @@ const submitOfflineFirst = async (event) => {
   event.stopImmediatePropagation();
   const form = event.currentTarget;
   const errors = document.querySelector("#form-errors");
-  const feedback = document.querySelector("#form-feedback");
   if (!form.checkValidity()) {
-    feedback.textContent = "";
+    showFormFeedback("");
     errors.textContent = "Complete all required fields before submitting.";
     form.reportValidity();
     return;
@@ -186,9 +299,10 @@ const submitOfflineFirst = async (event) => {
   const report = await collectReport(form);
   await saveLocalReport({ ...report, status: "pending_sync", savedAt: new Date().toISOString() });
   errors.textContent = "";
-  feedback.textContent = "Submitted from this device. Sync will continue automatically when online.";
+  showFormFeedback("Submitted from this device. Sync will continue automatically when online.", 5_000);
   await renderReports();
   resetReportForm(form);
+  setEditorActive(form, false);
   await requestSync();
 };
 
@@ -199,11 +313,14 @@ const handleClick = (event) => {
   if (scan instanceof HTMLButtonElement) startCameraScan(scan);
   const close = target.closest("[data-close-camera]");
   if (close) stopCameraScan(close.closest(".line-item"));
+  if (target.closest("[data-add-line-item]")) addLineItem();
   if (target.classList.contains("remove-line")) {
     const item = target.closest(".line-item");
     if (item && document.querySelectorAll(".line-item").length > 1) {
       stopCameraScan(item);
+      clearPhotoPreview(item);
       item.remove();
+      updateRemoveItemControls();
     }
   }
   if (target.dataset.retry) requestSync();
@@ -211,6 +328,7 @@ const handleClick = (event) => {
 
 const handleChange = (event) => {
   const target = event.target;
+  if (target instanceof HTMLInputElement && target.matches("[name=photo]")) showPhotoPreview(target);
   if (target instanceof HTMLInputElement && target.matches("[data-barcode-input]")) resolveBarcode(target);
   if (target instanceof HTMLSelectElement && target.matches("[name=product_id]")) {
     const result = target.closest(".line-item")?.querySelector("[data-barcode-result]");
@@ -233,9 +351,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.querySelector("#report-form");
   if (!form) return;
   resetReportForm(form);
+  setEditorActive(form, false);
   form.addEventListener("submit", submitOfflineFirst, true);
+  document.querySelector("#new-report")?.addEventListener("click", startNewReport);
+  document.querySelector("#cancel-edit")?.addEventListener("click", cancelEditing);
   document.querySelector("#save-draft")?.addEventListener("click", saveDraft);
-  document.querySelector("#add-line-item")?.addEventListener("click", () => addLineItem());
   document.body.addEventListener("click", handleClick);
   document.body.addEventListener("change", handleChange);
   document.body.addEventListener("keydown", handleKeydown);

@@ -5,7 +5,7 @@ import { login, loginPage } from "./auth";
 import { approvalsFragment, approvalsPage, decideReport } from "./approvals";
 import { hello } from "./hello";
 import { opsFragment, opsPage, retryErpWrite } from "./ops";
-import { appPage, lineItemRow, myReports, productsResponse, reportStatuses } from "./store";
+import { appPage, lineItemRow, myReports, productsResponse, reportDetailsPage, reportStatuses } from "./store";
 import { createReport, uploadPhoto } from "../services/report-submission";
 import type { Env } from "../types";
 
@@ -43,6 +43,12 @@ const publicRoutes: PublicRoute[] = [
 
 const protectedRoutes: ProtectedRoute[] = [
   { method: "GET", path: "/app", handle: ({ env, claims }) => appPage(env, claims) },
+  {
+    method: "GET",
+    path: /^\/reports\/([^/]+)$/,
+    roles: ["store"],
+    handle: ({ env, claims, params: [reportId] }) => reportDetailsPage(env, claims, reportId),
+  },
   { method: "GET", path: "/approvals", handle: ({ claims }) => approvalsPage(claims) },
   { method: "GET", path: "/ops", handle: ({ claims }) => opsPage(claims) },
   {
