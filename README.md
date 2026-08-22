@@ -73,9 +73,12 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 
 After choosing Zoe Store, `/app` opens the capture form.
 
-1. To pause work, select **Save draft** at any point. Incomplete fields and optional photos remain only on the device; drafts do not sync or enter approval.
-2. To submit a report, enter a date and total in CHF, then add one or more complete line items. Each needs a product, quantity, and reason. A photo is optional.
-3. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**.
+1. The editor starts disabled. Select **New report**, or choose **Continue editing** on a saved draft, to unlock it.
+2. To pause work, select **Save draft** at any point. Incomplete fields and optional photos remain only on the device; drafts do not sync or enter approval. The editor returns to its disabled state.
+3. To submit a report, enter a date and total in CHF, then add one or more complete line items. Each needs a product, quantity, and reason. A photo is optional.
+4. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**, and the editor returns to its disabled state.
+
+**Cancel editing** abandons the current unsaved insert or changes to an open draft and returns the editor to its disabled state. A previously saved draft remains available in **My reports**.
 
 The browser creates the report UUID before sending anything and saves every draft to IndexedDB first. Drafts can be continued or discarded from **My reports**. The report list is therefore the source of immediate feedback, whether online or offline.
 

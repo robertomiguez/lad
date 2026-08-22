@@ -23,7 +23,7 @@ type PageHeader = {
 
 export const pageDocument = ({ title, body, scripts = [] }: PageDocument) =>
   html(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title><link rel="stylesheet" href="/styles.css">${scripts.map(({ src, module }) => `<script${module ? ' type="module"' : ""} src="${escape(src)}"></script>`).join("")}${body}</html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/styles.css">${scripts.map(({ src, module }) => `<script${module ? ' type="module"' : ""} src="${escape(src)}"></script>`).join("")}${body}</html>`,
   );
 
 export const topBarView = ({ session, emphasis, backHref }: TopBar) =>

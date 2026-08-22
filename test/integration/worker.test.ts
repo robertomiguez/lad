@@ -64,7 +64,17 @@ describe("Worker integration", () => {
     const storePage = await SELF.fetch("https://example.com/app", { headers: { cookie: storeCookie } });
     const storeMarkup = await storePage.text();
     expect(storeMarkup).toContain('script type="module" src="/app.js"');
+    expect(storeMarkup).toContain('rel="icon" href="/favicon.svg"');
+    expect(storeMarkup).toContain('id="new-report"');
+    expect(storeMarkup).toContain('id="report-editor" class="report-editor" hidden disabled');
+    expect(storeMarkup).toContain("New record");
     expect(storeMarkup).toContain('id="save-draft"');
+    expect(storeMarkup).toContain('id="cancel-edit"');
+    expect(storeMarkup).toContain('id="confirmation-dialog"');
+    expect(storeMarkup).toContain('id="confirmation-confirm"');
+    expect(storeMarkup).toContain("data-add-line-item");
+    expect(storeMarkup).toContain('aria-label="Remove item"');
+    expect(storeMarkup).toContain("data-photo-preview");
     expect(storeMarkup).toContain("Submit report");
 
     const regionalCookie = await login("user-regional-north");
@@ -97,6 +107,16 @@ describe("Worker integration", () => {
     expect((await submit()).status).toBe(201);
     expect((await submit()).status).toBe(200);
     expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM reports").first<{ count: number }>())?.count).toBe(1);
+
+    const detail = await SELF.fetch(`https://example.com/reports/${reportId}`, {
+      headers: { cookie: storeCookie },
+    });
+    expect(detail.status).toBe(200);
+    const detailMarkup = await detail.text();
+    expect(detailMarkup).toContain("A read-only record of this submitted damage report.");
+    expect(detailMarkup).toContain("SKU-100 — Sparkling Water");
+    expect(detailMarkup).toContain("Quantity");
+    expect(detailMarkup).not.toContain("<button");
 
     const regionalCookie = await login("user-regional-north");
     const regional = await SELF.fetch(`https://example.com/api/reports/${reportId}/decision`, {

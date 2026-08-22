@@ -24,6 +24,8 @@ const formatRole = (role) =>
 const formatAmount = (amountCents) =>
   Number.isInteger(amountCents) ? `CHF ${(amountCents / 100).toFixed(2)}` : "Amount not set";
 
+const shortReportId = (id) => `${id.slice(0, 7)}...`;
+
 export function createReportsRenderer({ allPhotos, allReports, requestSync, onEditDraft, onDiscardDraft }) {
   let thumbnailUrls = [];
 
@@ -43,7 +45,18 @@ export function createReportsRenderer({ allPhotos, allReports, requestSync, onEd
             const reportPhotos = photos.filter((photo) => photo.reportId === report.id);
             const summary = document.createElement("div");
             summary.className = "report-summary";
-            summary.textContent = `${report.id} · ${workflow} · ${formatAmount(report.totalAmountCents)}`;
+            const reference = document.createElement(report.status === "draft" ? "span" : "a");
+            reference.className = "report-reference";
+            reference.textContent = shortReportId(report.id);
+            reference.title = report.id;
+            if (reference instanceof HTMLAnchorElement) {
+              reference.href = `/reports/${encodeURIComponent(report.id)}`;
+              reference.setAttribute("aria-label", `View report ${report.id}`);
+            }
+            summary.append(
+              reference,
+              document.createTextNode(` · ${workflow} · ${formatAmount(report.totalAmountCents)}`),
+            );
             item.append(summary);
             const details = document.createElement("div");
             details.className = "report-details";

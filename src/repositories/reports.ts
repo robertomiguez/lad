@@ -10,6 +10,25 @@ export type ExistingReport = {
   validation_error_code: string | null;
 };
 export type StoreReport = { id: string; status: string; total_amount: number; created_at: string };
+export type StoreReportDetail = {
+  id: string;
+  status: string;
+  total_amount: number;
+  created_at: string;
+  rejection_reason: string | null;
+  escalated_at: string | null;
+  escalation_target_role: string | null;
+};
+export type StoreReportLineItem = {
+  id: string;
+  product_id: string;
+  sku: string;
+  product_name: string;
+  quantity: number;
+  reason_code: string;
+  photo_id: string | null;
+  photo_status: string | null;
+};
 export type StoreReportStatus = {
   id: string;
   status: string;
@@ -61,6 +80,23 @@ export class ReportsRepository {
         .bind(storeId)
         .all<StoreReport>()
     ).results;
+  }
+
+  async findDetailForStore(reportId: string, storeId: string | null) {
+    const report = await this.db
+      .prepare(
+        "SELECT id, status, total_amount, created_at, rejection_reason, escalated_at, escalation_target_role FROM reports WHERE id = ? AND store_id = ?",
+      )
+      .bind(reportId, storeId)
+      .first<StoreReportDetail>();
+    if (!report) return null;
+    const items = await this.db
+      .prepare(
+        "SELECT li.id, li.product_id, p.sku, p.name AS product_name, li.quantity, li.reason_code, li.photo_id, ph.status AS photo_status FROM line_items li JOIN products p ON p.id = li.product_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.report_id = ? ORDER BY li.rowid ASC",
+      )
+      .bind(reportId)
+      .all<StoreReportLineItem>();
+    return { report, items: items.results };
   }
 
   async listStatusesForStore(storeId: string | null) {
