@@ -793,6 +793,15 @@ span.report-reference {
   align-items: start;
   padding: 1rem 1.1rem;
 }
+.approval-decision-card {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1.25rem;
+}
+.approval-decision-card h2,
+.approval-decision-card .lede {
+  margin: 0;
+}
 .approval-meta {
   display: grid;
   gap: 0.25rem;

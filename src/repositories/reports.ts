@@ -97,15 +97,30 @@ export class ReportsRepository {
       .bind(reportId, storeId)
       .first<StoreReportDetail>();
     if (!report) return null;
+    return this.detailWithEvidence(report);
+  }
+
+  async findDetailForApproval(reportId: string) {
+    const report = await this.db
+      .prepare(
+        "SELECT id, status, total_amount, created_at, rejection_reason, escalated_at, escalation_target_role FROM reports WHERE id = ?",
+      )
+      .bind(reportId)
+      .first<StoreReportDetail>();
+    if (!report) return null;
+    return this.detailWithEvidence(report);
+  }
+
+  private async detailWithEvidence(report: StoreReportDetail) {
     const items = await this.db
       .prepare(
         "SELECT li.id, li.product_id, p.sku, p.name AS product_name, li.quantity, li.reason_code, li.description, li.photo_id, ph.status AS photo_status FROM line_items li JOIN products p ON p.id = li.product_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.report_id = ? ORDER BY li.rowid ASC",
       )
-      .bind(reportId)
+      .bind(report.id)
       .all<StoreReportLineItem>();
     const events = await this.db
       .prepare("SELECT role, decision, created_at FROM approval_events WHERE report_id = ? ORDER BY created_at ASC")
-      .bind(reportId)
+      .bind(report.id)
       .all<StoreReportApprovalEvent>();
     return { report, items: items.results, events: events.results };
   }
@@ -269,6 +284,15 @@ export class ReportsRepository {
       )
       .bind(lineItemId, reportId, storeId)
       .first<{ photo_id: string | null; r2_key: string | null; photo_status: string | null }>();
+  }
+
+  findPhotoTargetForApproval(reportId: string, lineItemId: string) {
+    return this.db
+      .prepare(
+        "SELECT r.store_id, li.photo_id, ph.r2_key, ph.status AS photo_status FROM line_items li JOIN reports r ON r.id = li.report_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.id = ? AND li.report_id = ?",
+      )
+      .bind(lineItemId, reportId)
+      .first<{ store_id: string; photo_id: string | null; r2_key: string | null; photo_status: string | null }>();
   }
 
   findPhotoStatus(photoId: string) {

@@ -2,7 +2,7 @@ import { claimsFrom, forbidden, requireRole, unauthorized, type Claims } from ".
 import type { Role } from "../domain/roles";
 import { jsonError } from "../lib/http";
 import { login, loginPage } from "./auth";
-import { approvalsFragment, approvalsPage, decideReport } from "./approvals";
+import { approvalDetailsPage, approvalsFragment, approvalsPage, decideReport } from "./approvals";
 import { hello } from "./hello";
 import { opsFragment, opsPage, retryErpWrite } from "./ops";
 import { appPage, lineItemRow, myReports, productsResponse, reportDetailsPage, reportStatuses } from "./store";
@@ -50,6 +50,11 @@ const protectedRoutes: ProtectedRoute[] = [
     handle: ({ env, claims, params: [reportId] }) => reportDetailsPage(env, claims, reportId),
   },
   { method: "GET", path: "/approvals", handle: ({ claims }) => approvalsPage(claims) },
+  {
+    method: "GET",
+    path: /^\/approvals\/([^/]+)$/,
+    handle: ({ env, claims, params: [reportId] }) => approvalDetailsPage(env, claims, reportId),
+  },
   { method: "GET", path: "/ops", handle: ({ claims }) => opsPage(claims) },
   {
     method: "GET",
@@ -70,7 +75,6 @@ const protectedRoutes: ProtectedRoute[] = [
   {
     method: "GET",
     path: /^\/api\/reports\/([^/]+)\/line-items\/([^/]+)\/photo$/,
-    roles: ["store"],
     handle: ({ env, claims, params: [reportId, lineItemId] }) => getPhoto(env, claims, reportId, lineItemId),
   },
   {

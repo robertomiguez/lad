@@ -152,6 +152,36 @@ describe("Worker integration", () => {
     await expect(regionalWorklist.text()).resolves.toContain("/api/reports/report-overdue-regional/decision");
   });
 
+  it("links Operations report IDs to the read-only approval detail", async () => {
+    const reportId = "report-ops-evidence";
+    await env.DB.prepare(
+      "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at, validation_error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        reportId,
+        "store-zurich-01",
+        "user-store-zurich",
+        "sync_error",
+        12_500,
+        "2026-08-23T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+        "product_inactive",
+      )
+      .run();
+
+    const qualityCookie = await login("user-quality-hq");
+    const worklist = await SELF.fetch("https://example.com/fragments/ops", {
+      headers: { cookie: qualityCookie },
+    });
+    await expect(worklist.text()).resolves.toContain(`href="/approvals/${reportId}"`);
+
+    const details = await SELF.fetch(`https://example.com/approvals/${reportId}`, {
+      headers: { cookie: qualityCookie },
+    });
+    expect(details.status).toBe(200);
+    await expect(details.text()).resolves.toContain("This report is not currently assigned to your role for a decision.");
+  });
+
   it("shows a helpful message when an htmx approval action is no longer assigned to the approver", async () => {
     await env.DB.prepare(
       "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -222,6 +252,70 @@ describe("Worker integration", () => {
     expect(photo.status).toBe(200);
     expect(photo.headers.get("content-type")).toBe("image/jpeg");
     expect(new TextDecoder().decode(await photo.arrayBuffer())).toBe("photo bytes");
+  });
+
+  it("links approvals to a decision-ready evidence view", async () => {
+    const reportId = "report-approval-evidence";
+    const lineItemId = "line-approval-evidence";
+    const photoId = "photo-approval-evidence";
+    const photoKey = `reports/${reportId}/${photoId}`;
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        reportId,
+        "store-zurich-01",
+        "user-store-zurich",
+        "pending_regional",
+        12_500,
+        "2026-08-23T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+      ),
+      env.DB.prepare(
+        "INSERT INTO line_items (id, report_id, product_id, quantity, reason_code, description, photo_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        lineItemId,
+        reportId,
+        "product-100",
+        2,
+        "damaged",
+        "Carton was crushed during unloading.",
+        photoId,
+      ),
+      env.DB.prepare("INSERT INTO photos (id, line_item_id, r2_key, status) VALUES (?, ?, ?, ?)").bind(
+        photoId,
+        lineItemId,
+        photoKey,
+        "uploaded",
+      ),
+    ]);
+    await env.PHOTOS.put(photoKey, "approval photo", { httpMetadata: { contentType: "image/jpeg" } });
+
+    const regionalCookie = await login("user-regional-north");
+    const worklist = await SELF.fetch("https://example.com/fragments/approvals", {
+      headers: { cookie: regionalCookie },
+    });
+    await expect(worklist.text()).resolves.toContain(`href="/approvals/${reportId}"`);
+
+    const details = await SELF.fetch(`https://example.com/approvals/${reportId}`, {
+      headers: { cookie: regionalCookie },
+    });
+    expect(details.status).toBe(200);
+    const markup = await details.text();
+    expect(markup).toContain("Submitted evidence");
+    expect(markup).toContain("SKU-100 — Sparkling Water");
+    expect(markup).toContain("Damaged");
+    expect(markup).toContain("Carton was crushed during unloading.");
+    expect(markup).toContain("Photo available");
+    expect(markup).toContain(`src="/api/reports/${reportId}/line-items/${lineItemId}/photo"`);
+    expect(markup).toContain('id="approval-decision"');
+    expect(markup).toContain('hx-target="#approval-decision"');
+
+    const photo = await SELF.fetch(`https://example.com/api/reports/${reportId}/line-items/${lineItemId}/photo`, {
+      headers: { cookie: regionalCookie },
+    });
+    expect(photo.status).toBe(200);
+    expect(new TextDecoder().decode(await photo.arrayBuffer())).toBe("approval photo");
   });
 
   it("submits idempotently and routes a CHF 1,000 report through both approvals", async () => {
