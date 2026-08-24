@@ -143,7 +143,7 @@ const startNewReport = () => {
   setEditorActive(form, true);
   document.querySelector("#form-errors").textContent = "";
   showFormFeedback("");
-  form.elements.total_amount.focus();
+  form.querySelector("[name=product_id]")?.focus();
 };
 
 const cancelEditing = () => {
@@ -194,12 +194,10 @@ const collectReport = async (form) => {
   rows.forEach((row, index) => {
     row.querySelector("[name=line_item_id]").value = items[index].id;
   });
-  const totalAmount = form.elements.total_amount.value;
   return {
     id: reportId,
     storeId: form.elements.store_id.value,
     reporterId: form.elements.reporter_id.value,
-    totalAmountCents: totalAmount ? Math.round(Number(totalAmount) * 100) : null,
     items,
   };
 };
@@ -225,13 +223,10 @@ const editDraft = async (draft) => {
   (draft.items?.length ? draft.items : [{}]).forEach(addLineItem);
   form.elements.report_id.value = draft.id;
   form.dataset.createdAt = draft.createdAt || draft.savedAt;
-  form.elements.total_amount.value = Number.isInteger(draft.totalAmountCents)
-    ? (draft.totalAmountCents / 100).toFixed(2)
-    : "";
   setEditorActive(form, true);
   document.querySelector("#form-errors").textContent = "";
   showFormFeedback("");
-  form.elements.total_amount.focus();
+  form.querySelector("[name=product_id]")?.focus();
 };
 
 const discardDraft = async (draft) => {

@@ -9,16 +9,21 @@ INSERT INTO users (id, name, role, store_id) VALUES
   ('user-quality-hq', 'Quinn Quality', 'quality', NULL)
 ON CONFLICT(id) DO UPDATE SET name = excluded.name, role = excluded.role, store_id = excluded.store_id;
 
-INSERT INTO products (id, sku, barcode, name, active) VALUES
-  ('product-100', 'SKU-100', '7612345678908', 'Sparkling Water 500ml', 1),
-  ('product-200', 'SKU-200', '7612345678917', 'Coffee Beans 1kg', 1),
-  ('product-300', 'SKU-300', '7612345678926', 'Retired Sample Product', 0)
+INSERT INTO products (id, sku, barcode, name, active, unit_price_cents, currency, tax_rate_bps) VALUES
+  ('product-100', 'SKU-100', '7612345678908', 'Sparkling Water 500ml', 1, 115, 'CHF', 260),
+  ('product-200', 'SKU-200', '7612345678917', 'Coffee Beans 1kg', 1, 950, 'CHF', 260),
+  ('product-300', 'SKU-300', '7612345678926', 'Retired Sample Product', 0, 500, 'CHF', 260)
 ON CONFLICT(id) DO UPDATE SET
   sku = excluded.sku,
   barcode = excluded.barcode,
   name = excluded.name,
-  active = excluded.active;
+  active = excluded.active,
+  unit_price_cents = excluded.unit_price_cents,
+  currency = excluded.currency,
+  tax_rate_bps = excluded.tax_rate_bps;
 
--- Manual threshold examples: CHF 150 = no approval; CHF 250 = regional;
--- CHF 1,000 = regional and quality. SKU-300 supports inactive-product tests.
+-- These are server-owned POC catalogue values, not user-entered totals. They
+-- simulate a Comarch pricing resolver: SKU-100 uses CHF 1.15 and SKU-200 CHF
+-- 9.50 (both gross, including 2.6% VAT). Production derives the snapshot from
+-- Comarch order/delivery lines. SKU-300 supports inactive-product tests.
 -- The EANs above are demo mappings; replace them with actual product barcodes.

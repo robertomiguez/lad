@@ -5,9 +5,9 @@ import { reportWorkflow } from "../../src/lib/workflow-client";
 const schema = `
 CREATE TABLE IF NOT EXISTS stores (id TEXT PRIMARY KEY, name TEXT NOT NULL, region TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, store_id TEXT);
-CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, sku TEXT NOT NULL, barcode TEXT, name TEXT NOT NULL, active INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, store_id TEXT NOT NULL, reporter_id TEXT NOT NULL, status TEXT NOT NULL, total_amount INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, validation_error_code TEXT, rejection_reason TEXT, escalated_at TEXT, escalation_target_role TEXT);
-CREATE TABLE IF NOT EXISTS line_items (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity INTEGER NOT NULL, reason_code TEXT NOT NULL, description TEXT, photo_id TEXT);
+CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, sku TEXT NOT NULL, barcode TEXT, name TEXT NOT NULL, active INTEGER NOT NULL, unit_price_cents INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'CHF', tax_rate_bps INTEGER NOT NULL DEFAULT 260);
+CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, store_id TEXT NOT NULL, reporter_id TEXT NOT NULL, status TEXT NOT NULL, total_amount INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'CHF', tax_amount INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, validation_error_code TEXT, rejection_reason TEXT, escalated_at TEXT, escalation_target_role TEXT);
+CREATE TABLE IF NOT EXISTS line_items (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, product_id TEXT NOT NULL, sku_snapshot TEXT NOT NULL DEFAULT '', product_name_snapshot TEXT NOT NULL DEFAULT '', quantity INTEGER NOT NULL, unit_price_cents INTEGER NOT NULL DEFAULT 0, tax_rate_bps INTEGER NOT NULL DEFAULT 0, line_total_amount INTEGER NOT NULL DEFAULT 0, reason_code TEXT NOT NULL, description TEXT, photo_id TEXT);
 CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, line_item_id TEXT NOT NULL, r2_key TEXT NOT NULL, status TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS credit_notes (id TEXT PRIMARY KEY, report_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL, erp_document_id TEXT);
 CREATE TABLE IF NOT EXISTS approval_events (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, actor_id TEXT NOT NULL, role TEXT NOT NULL, decision TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (key TEXT PRIMARY KEY, first_seen_at
 DELETE FROM approval_events; DELETE FROM credit_notes; DELETE FROM photos; DELETE FROM line_items; DELETE FROM reports; DELETE FROM idempotency_keys; DELETE FROM products; DELETE FROM users; DELETE FROM stores;
 INSERT INTO stores VALUES ('store-zurich-01', 'Zurich Central', 'north');
 INSERT INTO users VALUES ('user-store-zurich', 'Zoe Store', 'store', 'store-zurich-01'), ('user-regional-north', 'Rene Regional', 'regional_manager', 'store-zurich-01'), ('user-quality-hq', 'Quinn Quality', 'quality', NULL);
-INSERT INTO products VALUES ('product-100', 'SKU-100', '7612345678908', 'Sparkling Water', 1);
+INSERT INTO products (id, sku, barcode, name, active, unit_price_cents, currency, tax_rate_bps) VALUES ('product-100', 'SKU-100', '7612345678908', 'Sparkling Water', 1, 115, 'CHF', 260), ('product-200', 'SKU-200', '7612345678917', 'Coffee Beans 1kg', 1, 950, 'CHF', 260);
 `;
 
 beforeEach(async () => env.DB.exec(schema));
@@ -179,7 +179,9 @@ describe("Worker integration", () => {
       headers: { cookie: qualityCookie },
     });
     expect(details.status).toBe(200);
-    await expect(details.text()).resolves.toContain("This report is not currently assigned to your role for a decision.");
+    await expect(details.text()).resolves.toContain(
+      "This report is not currently assigned to your role for a decision.",
+    );
   });
 
   it("shows a helpful message when an htmx approval action is no longer assigned to the approver", async () => {
@@ -273,15 +275,7 @@ describe("Worker integration", () => {
       ),
       env.DB.prepare(
         "INSERT INTO line_items (id, report_id, product_id, quantity, reason_code, description, photo_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).bind(
-        lineItemId,
-        reportId,
-        "product-100",
-        2,
-        "damaged",
-        "Carton was crushed during unloading.",
-        photoId,
-      ),
+      ).bind(lineItemId, reportId, "product-100", 2, "damaged", "Carton was crushed during unloading.", photoId),
       env.DB.prepare("INSERT INTO photos (id, line_item_id, r2_key, status) VALUES (?, ?, ?, ?)").bind(
         photoId,
         lineItemId,
@@ -324,12 +318,12 @@ describe("Worker integration", () => {
       id: reportId,
       storeId: "store-zurich-01",
       reporterId: "user-store-zurich",
-      totalAmountCents: 100_000,
+      totalAmountCents: 1,
       items: [
         {
           id: "line-lifecycle-1000",
-          productId: "product-100",
-          quantity: 1,
+          productId: "product-200",
+          quantity: 106,
           reasonCode: "damaged",
           description: "Outer packaging was wet after unloading.",
         },
@@ -346,6 +340,9 @@ describe("Worker integration", () => {
     expect((await submit()).status).toBe(201);
     expect((await submit()).status).toBe(200);
     expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM reports").first<{ count: number }>())?.count).toBe(1);
+    await expect(
+      env.DB.prepare("SELECT total_amount, tax_amount FROM reports WHERE id = ?").bind(reportId).first(),
+    ).resolves.toEqual({ total_amount: 100_700, tax_amount: 2_552 });
 
     const detail = await SELF.fetch(`https://example.com/reports/${reportId}`, {
       headers: { cookie: storeCookie },
@@ -355,7 +352,7 @@ describe("Worker integration", () => {
     expect(detailMarkup).toContain("A read-only record of this submitted damage report.");
     expect(detailMarkup).toContain("Approval timeline");
     expect(detailMarkup).toContain("Outer packaging was wet after unloading.");
-    expect(detailMarkup).toContain("SKU-100 — Sparkling Water");
+    expect(detailMarkup).toContain("SKU-200 — Coffee Beans 1kg");
     expect(detailMarkup).toContain("Quantity");
     expect(detailMarkup).not.toContain("<button");
 

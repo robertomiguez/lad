@@ -12,7 +12,7 @@ It is deliberately a POC: seeded users replace real SSO, D1 replaces the ERP, an
 | API and UI           | Cloudflare Worker, HTML-first pages, htmx approval actions              |
 | Approval             | One Durable Object state machine per report                             |
 | Escalation           | Durable Object alarm                                                    |
-| Mock ERP             | D1 reports, products and credit notes                                   |
+| Mock ERP             | D1 reports, SKU value resolver and credit notes                         |
 | Duplicate prevention | Client UUID, KV, D1 idempotency table and unique credit note constraint |
 | Photos               | Optional R2 upload independent from report sync                         |
 | ERP write            | Retryable Cloudflare Queue consumer                                     |
@@ -75,7 +75,7 @@ After choosing Zoe Store, `/app` opens the capture form.
 
 1. The editor starts disabled. Select **New report**, or choose **Continue editing** on a saved draft, to unlock it.
 2. To pause work, select **Save draft** at any point. Incomplete fields and optional photos remain only on the device; drafts do not sync or enter approval. The editor returns to its disabled state.
-3. To submit a report, enter the total in CHF, then add one or more complete line items. Each needs a product, quantity, and reason, plus optional additional details for approvers. A photo is optional. The system records the report timestamp automatically.
+3. To submit a report, add one or more complete line items. Each needs a product, quantity, and reason, plus optional additional details for approvers. A photo is optional. The system records the report timestamp automatically.
 4. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**, and the editor returns to its disabled state.
 
 **Cancel editing** abandons the current unsaved insert or changes to an open draft and returns the editor to its disabled state. A previously saved draft remains available in **My reports**.
@@ -91,6 +91,14 @@ Each damage-item row supports three equivalent ways to select a product:
 3. Type the SKU manually or use the **Product** picker.
 
 The product catalogue stores both the internal SKU and an optional physical barcode. It is cached in IndexedDB after an online visit, so hardware or camera scans can still resolve products after a page reload while offline. The browser's native camera barcode API is experimental and not available in every browser; when it is unavailable or camera permission is denied, the report remains fully usable with a handheld scanner, typed SKU, or product picker.
+
+### Authoritative POC pricing
+
+The store never enters a total. At synchronisation, the Worker looks up the selected SKUs in its server-owned POC catalogue, calculates the gross CHF total from quantity × unit value, and snapshots the SKU, product name, unit price, tax rate, currency, line total, tax amount, and report total. Approval routing reads that immutable snapshot, so a later catalogue-price change cannot change an in-flight claim.
+
+The seed values are explicitly simulated, gross retail-like values: `SKU-100` is CHF 1.15 (sparkling water 500ml) and `SKU-200` is CHF 9.50 (coffee beans 1kg), both including 2.6% VAT. They provide plausible demonstration thresholds, not a claim about the products' real prices.
+
+In production, the same resolver interface derives and snapshots value, currency, tax, source order/delivery, and product data from Comarch. The POC has no Comarch access, so it intentionally uses the catalogue instead of asserting a source-document lookup.
 
 ### Quick barcode test
 
@@ -116,13 +124,13 @@ The capture form is present in the cached document, so a fresh offline reload do
 
 ### 2. Approval routing
 
-Create reports using these totals:
+Create reports with these quantities using the simulated catalogue values:
 
-| Total     | Expected path                                                                   |
-| --------- | ------------------------------------------------------------------------------- |
-| CHF 150   | Auto-approved, then **Credit Note Processing** and **Completed**.               |
-| CHF 250   | **With Regional Manager**; Rene can approve or reject it.                       |
-| CHF 1,000 | Rene must approve first, then it becomes **With Quality Management** for Quinn. |
+| Items           | Calculated total | Expected path                                                                   |
+| --------------- | ---------------- | ------------------------------------------------------------------------------- |
+| 130 × `SKU-100` | CHF 149.50       | Auto-approved, then **Credit Note Processing** and **Completed**.               |
+| 22 × `SKU-200`  | CHF 209.00       | **With Regional Manager**; Rene can approve or reject it.                       |
+| 106 × `SKU-200` | CHF 1,007.00     | Rene must approve first, then it becomes **With Quality Management** for Quinn. |
 
 Sign in as the appropriate approver and open `/approvals`. Each available report has **Approve** and **Reject** controls. Rejection requires a reason, which appears in the store view.
 
@@ -136,7 +144,7 @@ AUTO_APPROVE_BELOW_REGIONAL=false
 
 ### 3. Escalation
 
-For a quick demo, the checked-in configuration escalates an unanswered stage after 120 seconds. Create a CHF 250 or CHF 1,000 report and leave the current approval step untouched. The store and approval lists show that it is escalated to the fallback **Quality Management** role.
+For a quick demo, the checked-in configuration escalates an unanswered stage after 120 seconds. Create a Regional or Quality threshold report from the table above and leave the current approval step untouched. The store and approval lists show that it is escalated to the fallback **Quality Management** role.
 
 Change the local demo delay before starting Wrangler if needed:
 
@@ -253,4 +261,4 @@ Do not deploy `.dev.vars`; it is local-only and ignored by Git.
 
 ## Intentional POC limits
 
-This is not production authentication or ERP integration. It excludes real SSO, password management, rate limiting, multi-tenant isolation, public-holiday calendars, deputy/absence management, and a real ERP API. The hardcoded role claims and mock resources exist solely to demonstrate the workflow safely.
+This is not production authentication or ERP integration. It excludes real SSO, password management, rate limiting, multi-tenant isolation, public-holiday calendars, deputy/absence management, and a real ERP API. The hardcoded role claims and mock resources exist solely to demonstrate the workflow safely. The POC SKU price is a controlled stand-in for Comarch order/delivery-line valuation; it is not a production pricing model.

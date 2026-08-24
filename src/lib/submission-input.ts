@@ -1,16 +1,31 @@
 import type { Claims } from "../auth";
-import type { Submission } from "../domain/submission";
+import type { PricedSubmission, Submission } from "../domain/submission";
 
 const allowedReasonCodes = new Set(["damaged", "incorrect_delivery", "expired"]);
 const idPattern = /^[a-zA-Z0-9-]{8,80}$/;
 const maxDescriptionLength = 500;
 
 export type SubmissionValidationError =
-  "invalid_quantity" | "invalid_reason_code" | "store_not_found" | "product_not_found" | "product_inactive";
+  | "invalid_quantity"
+  | "invalid_reason_code"
+  | "store_not_found"
+  | "product_not_found"
+  | "product_inactive"
+  | "unsupported_product_currency";
+
+export type PricedProduct = {
+  id: string;
+  sku: string;
+  name: string;
+  active: number;
+  unitPriceCents: number;
+  currency: string;
+  taxRateBps: number;
+};
 
 export type SubmissionCatalog = {
   storeExists(id: string): Promise<unknown>;
-  findProductState(id: string): Promise<{ active: number } | null>;
+  findProductsForPricing(ids: string[]): Promise<PricedProduct[]>;
 };
 
 export const isJsonSubmissionRequest = (request: Request) =>
@@ -32,7 +47,6 @@ export async function parseSubmission(request: Request): Promise<Submission | nu
     id: String(form.get("report_id") ?? ""),
     storeId: String(form.get("store_id") ?? ""),
     reporterId: String(form.get("reporter_id") ?? ""),
-    totalAmountCents: Math.round(Number(form.get("total_amount")) * 100),
     items: productIds.map((productId, index) => ({
       id: lineIds[index],
       productId,
@@ -49,8 +63,6 @@ export function hasValidSubmissionShape(submission: Submission, claims: Claims, 
     (!idempotencyKey || idempotencyKey === submission.id) &&
     submission.storeId === claims.store_id &&
     submission.reporterId === claims.user_id &&
-    Number.isInteger(submission.totalAmountCents) &&
-    submission.totalAmountCents >= 0 &&
     submission.items.length >= 1 &&
     submission.items.every(
       (item) =>
@@ -66,18 +78,44 @@ export function hasValidSubmissionShape(submission: Submission, claims: Claims, 
   );
 }
 
-export async function validateSubmissionCatalog(
+export async function priceSubmission(
   catalog: SubmissionCatalog,
   submission: Submission,
-): Promise<SubmissionValidationError | null> {
-  if (submission.items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1)) return "invalid_quantity";
-  if (submission.items.some((item) => !allowedReasonCodes.has(item.reasonCode))) return "invalid_reason_code";
-  if (!(await catalog.storeExists(submission.storeId))) return "store_not_found";
+): Promise<{ submission: PricedSubmission } | { error: SubmissionValidationError }> {
+  if (submission.items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1))
+    return { error: "invalid_quantity" };
+  if (submission.items.some((item) => !allowedReasonCodes.has(item.reasonCode)))
+    return { error: "invalid_reason_code" };
+  if (!(await catalog.storeExists(submission.storeId))) return { error: "store_not_found" };
+
+  const products = new Map(
+    (await catalog.findProductsForPricing([...new Set(submission.items.map((item) => item.productId))])).map(
+      (product) => [product.id, product],
+    ),
+  );
+  const pricedItems: PricedSubmission["items"] = [];
+  let totalAmountCents = 0;
+  let taxAmountCents = 0;
 
   for (const item of submission.items) {
-    const product = await catalog.findProductState(item.productId);
-    if (!product) return "product_not_found";
-    if (product.active !== 1) return "product_inactive";
+    const product = products.get(item.productId);
+    if (!product) return { error: "product_not_found" };
+    if (product.active !== 1) return { error: "product_inactive" };
+    if (product.currency !== "CHF") return { error: "unsupported_product_currency" };
+
+    const lineTotalAmountCents = product.unitPriceCents * item.quantity;
+    const lineTaxAmountCents = Math.round((lineTotalAmountCents * product.taxRateBps) / (10_000 + product.taxRateBps));
+    totalAmountCents += lineTotalAmountCents;
+    taxAmountCents += lineTaxAmountCents;
+    pricedItems.push({
+      ...item,
+      sku: product.sku,
+      productName: product.name,
+      unitPriceCents: product.unitPriceCents,
+      taxRateBps: product.taxRateBps,
+      lineTotalAmountCents,
+    });
   }
-  return null;
+
+  return { submission: { ...submission, currency: "CHF", totalAmountCents, taxAmountCents, items: pricedItems } };
 }
