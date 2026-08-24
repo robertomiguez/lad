@@ -36,7 +36,7 @@ export async function reportDetailsPage(env: Env, claims: Claims, reportId: stri
   const detail = await reports.findDetailForStore(reportId, claims.store_id);
   if (!detail) return jsonError("Report not found", 404);
   const user = await new UsersRepository(env.DB).findStoreWorkspace(claims.user_id);
-  return reportDetailsView(claims, user, detail.report, detail.items);
+  return reportDetailsView(claims, user, detail.report, detail.items, detail.events);
 }
 
 export async function reportStatuses(env: Env, claims: Claims) {

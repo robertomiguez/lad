@@ -535,6 +535,81 @@ span.report-reference {
 .report-detail-card h2 {
   margin-top: 1.75rem;
 }
+.approval-timeline-section {
+  margin-top: 1.75rem;
+}
+.approval-timeline-section h2 {
+  margin-top: 0;
+}
+.approval-timeline {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.approval-timeline li {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1.3rem auto;
+  flex: 1 1 0;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.approval-timeline li:not(:last-child)::after {
+  position: absolute;
+  top: 0.65rem;
+  left: 1.3rem;
+  width: calc(100% - 1.3rem);
+  height: 2px;
+  background: var(--line);
+  content: "";
+}
+.timeline-marker {
+  position: relative;
+  z-index: 1;
+  width: 1.3rem;
+  height: 1.3rem;
+  border: 2px solid #9c9c9c;
+  border-radius: 4px;
+  background: var(--panel);
+}
+.timeline-completed .timeline-marker {
+  border-color: #1769aa;
+  background: #1769aa;
+}
+.timeline-rejected .timeline-marker {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.timeline-current .timeline-marker {
+  border-color: #1769aa;
+  background: #dceefc;
+}
+.timeline-skipped .timeline-marker {
+  border-color: #b5b5b5;
+  background: #efefef;
+}
+.timeline-note {
+  color: #8a5200 !important;
+  font-weight: 700;
+}
+.approval-timeline li > div {
+  display: grid;
+  gap: 0.1rem;
+  padding-right: 0.5rem;
+}
+.approval-timeline strong {
+  font-size: 0.85rem;
+}
+.approval-timeline span,
+.approval-timeline time {
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+.timeline-completed time {
+  color: var(--ink);
+  font-weight: 700;
+}
 .report-detail-summary,
 .report-detail-items article dl {
   display: grid;
@@ -819,6 +894,20 @@ mark {
   .report-detail-summary,
   .report-detail-items article dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .approval-timeline {
+    display: grid;
+    gap: 0.85rem;
+  }
+  .approval-timeline li:not(:last-child)::after {
+    top: 1.3rem;
+    left: 0.6rem;
+    width: 2px;
+    height: calc(100% - 0.4rem);
+  }
+  .approval-timeline li {
+    grid-template-columns: 1.3rem minmax(0, 1fr);
+    grid-template-rows: none;
   }
 }
 @media (max-width: 560px) {

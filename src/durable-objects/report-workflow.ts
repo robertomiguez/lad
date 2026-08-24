@@ -71,18 +71,24 @@ export class ReportWorkflow extends DurableObject<WorkflowEnv> {
       current.status = REPORT_STATUS.rejected;
       current.escalated = false;
       current.escalationTargetRole = undefined;
-      await this.transition(current, correlationId, input.actor, previousStatus, input.reason.trim());
+      await this.transition(current, correlationId, input.actor, previousStatus, input.reason.trim(), {
+        role: input.role,
+        decision: input.decision,
+      });
       await this.ctx.storage.deleteAlarm();
       return { ok: true, workflow: current };
     }
 
-    current.status =
-      current.status === REPORT_STATUS.pendingRegional
-        ? statusAfterRegionalApproval(current.totalAmountCents)
-        : REPORT_STATUS.approved;
+    const requiresQualityAfterRegionalApproval =
+      current.status === REPORT_STATUS.pendingRegional &&
+      (current.escalated || statusAfterRegionalApproval(current.totalAmountCents) === REPORT_STATUS.pendingQuality);
+    current.status = requiresQualityAfterRegionalApproval ? REPORT_STATUS.pendingQuality : REPORT_STATUS.approved;
     current.escalated = false;
     current.escalationTargetRole = undefined;
-    await this.transition(current, correlationId, input.actor, previousStatus);
+    await this.transition(current, correlationId, input.actor, previousStatus, undefined, {
+      role: input.role,
+      decision: input.decision,
+    });
     if (current.status === REPORT_STATUS.pendingQuality) await this.scheduleEscalation();
     else await this.ctx.storage.deleteAlarm();
     return { ok: true, workflow: current };
@@ -143,6 +149,7 @@ export class ReportWorkflow extends DurableObject<WorkflowEnv> {
     actor: string,
     fromStatus: string,
     rejectionReason?: string,
+    event?: { role: ApprovalRole; decision: "approve" | "reject" },
   ) {
     const timestamp = new Date().toISOString();
     await new ReportsRepository(this.env.DB).transitionWorkflow(
@@ -150,6 +157,7 @@ export class ReportWorkflow extends DurableObject<WorkflowEnv> {
       workflow.status,
       rejectionReason,
       timestamp,
+      event && { id: crypto.randomUUID(), actorId: actor, ...event },
     );
     if (workflow.status === REPORT_STATUS.approved && !workflow.erpEnqueued) {
       // Queue payloads deliberately contain no business state. The consumer reads

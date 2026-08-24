@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, store_id TEXT NOT NULL,
 CREATE TABLE IF NOT EXISTS line_items (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity INTEGER NOT NULL, reason_code TEXT NOT NULL, description TEXT, photo_id TEXT);
 CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, line_item_id TEXT NOT NULL, r2_key TEXT NOT NULL, status TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS credit_notes (id TEXT PRIMARY KEY, report_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL, erp_document_id TEXT);
+CREATE TABLE IF NOT EXISTS approval_events (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, actor_id TEXT NOT NULL, role TEXT NOT NULL, decision TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency_keys (key TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL);
-DELETE FROM credit_notes; DELETE FROM photos; DELETE FROM line_items; DELETE FROM reports; DELETE FROM idempotency_keys; DELETE FROM products; DELETE FROM users; DELETE FROM stores;
+DELETE FROM approval_events; DELETE FROM credit_notes; DELETE FROM photos; DELETE FROM line_items; DELETE FROM reports; DELETE FROM idempotency_keys; DELETE FROM products; DELETE FROM users; DELETE FROM stores;
 INSERT INTO stores VALUES ('store-zurich-01', 'Zurich Central', 'north');
 INSERT INTO users VALUES ('user-store-zurich', 'Zoe Store', 'store', 'store-zurich-01'), ('user-regional-north', 'Rene Regional', 'regional_manager', 'store-zurich-01'), ('user-quality-hq', 'Quinn Quality', 'quality', NULL);
 INSERT INTO products VALUES ('product-100', 'SKU-100', '7612345678908', 'Sparkling Water', 1);
@@ -222,6 +223,7 @@ describe("Worker integration", () => {
     expect(detail.status).toBe(200);
     const detailMarkup = await detail.text();
     expect(detailMarkup).toContain("A read-only record of this submitted damage report.");
+    expect(detailMarkup).toContain("Approval timeline");
     expect(detailMarkup).toContain("Outer packaging was wet after unloading.");
     expect(detailMarkup).toContain("SKU-100 — Sparkling Water");
     expect(detailMarkup).toContain("Quantity");
@@ -236,6 +238,15 @@ describe("Worker integration", () => {
     expect(regional.status).toBe(200);
     expect(((await regional.json()) as { status: string }).status).toBe("pending_quality");
 
+    const awaitingQualityDetails = await SELF.fetch(`https://example.com/reports/${reportId}`, {
+      headers: { cookie: storeCookie },
+    });
+    const awaitingQualityMarkup = await awaitingQualityDetails.text();
+    expect(awaitingQualityMarkup).toContain("Quality approval");
+    expect(awaitingQualityMarkup).toContain("Awaiting decision");
+    expect(awaitingQualityMarkup).toContain("Decision pending");
+    expect(awaitingQualityMarkup).not.toContain("Final decision</strong><span>Approved");
+
     await reportWorkflow(env, reportId).reconcilePendingStatus("pending_regional");
 
     const qualityCookie = await login("user-quality-hq");
@@ -246,5 +257,15 @@ describe("Worker integration", () => {
     });
     expect(quality.status).toBe(200);
     expect(((await quality.json()) as { status: string }).status).toBe("rejected");
+
+    const finalDetail = await SELF.fetch(`https://example.com/reports/${reportId}`, {
+      headers: { cookie: storeCookie },
+    });
+    const finalMarkup = await finalDetail.text();
+    expect(finalMarkup).toContain("Regional approval");
+    expect(finalMarkup).toContain("Quality approval");
+    expect(finalMarkup).toContain("Final decision");
+    expect(finalMarkup).toContain("Rejected");
+    expect(finalMarkup).toContain('class="timeline-rejected"');
   });
 });

@@ -30,6 +30,11 @@ export type StoreReportLineItem = {
   photo_id: string | null;
   photo_status: string | null;
 };
+export type StoreReportApprovalEvent = {
+  role: ApprovalRole;
+  decision: "approve" | "reject";
+  created_at: string;
+};
 export type StoreReportStatus = {
   id: string;
   status: string;
@@ -98,7 +103,11 @@ export class ReportsRepository {
       )
       .bind(reportId)
       .all<StoreReportLineItem>();
-    return { report, items: items.results };
+    const events = await this.db
+      .prepare("SELECT role, decision, created_at FROM approval_events WHERE report_id = ? ORDER BY created_at ASC")
+      .bind(reportId)
+      .all<StoreReportApprovalEvent>();
+    return { report, items: items.results, events: events.results };
   }
 
   async listStatusesForStore(storeId: string | null) {
@@ -222,7 +231,15 @@ export class ReportsRepository {
           .prepare(
             "INSERT OR IGNORE INTO line_items (id, report_id, product_id, quantity, reason_code, description, photo_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
           )
-          .bind(item.id, submission.id, item.productId, item.quantity, item.reasonCode, item.description, item.photoId ?? null),
+          .bind(
+            item.id,
+            submission.id,
+            item.productId,
+            item.quantity,
+            item.reasonCode,
+            item.description,
+            item.photoId ?? null,
+          ),
       ),
       ...submission.items
         .filter((item) => item.photoId)
@@ -260,13 +277,27 @@ export class ReportsRepository {
       : this.db.prepare("UPDATE photos SET status = ? WHERE id = ?").bind(status, photoId).run();
   }
 
-  transitionWorkflow(reportId: string, status: ReportStatus, rejectionReason: string | undefined, timestamp: string) {
-    return this.db
+  transitionWorkflow(
+    reportId: string,
+    status: ReportStatus,
+    rejectionReason: string | undefined,
+    timestamp: string,
+    event?: { id: string; actorId: string; role: ApprovalRole; decision: "approve" | "reject" },
+  ) {
+    const update = this.db
       .prepare(
         "UPDATE reports SET status = ?, rejection_reason = ?, escalated_at = NULL, escalation_target_role = NULL, updated_at = ? WHERE id = ?",
       )
-      .bind(status, rejectionReason ?? null, timestamp, reportId)
-      .run();
+      .bind(status, rejectionReason ?? null, timestamp, reportId);
+    if (!event) return update.run();
+    return this.db.batch([
+      update,
+      this.db
+        .prepare(
+          "INSERT INTO approval_events (id, report_id, actor_id, role, decision, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(event.id, reportId, event.actorId, event.role, event.decision, timestamp),
+    ]);
   }
 
   markEscalated(reportId: string, status: ReportStatus, escalationTargetRole: ApprovalRole, timestamp: string) {
