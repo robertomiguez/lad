@@ -126,6 +126,8 @@ Create reports using these totals:
 
 Sign in as the appropriate approver and open `/approvals`. Each available report has **Approve** and **Reject** controls. Rejection requires a reason, which appears in the store view.
 
+Report details include an approval timeline. It records the submitted time and every Regional or Quality approval/rejection with its date and time.
+
 The CHF 200 auto-approval assumption is configurable. Set this in `.dev.vars`, then restart `npm run dev`:
 
 ```dotenv

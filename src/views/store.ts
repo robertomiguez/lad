@@ -2,7 +2,12 @@ import type { Claims } from "../auth";
 import { storeStatusLabel } from "../domain/reports";
 import { escape, html } from "../lib/http";
 import type { Product } from "../repositories/catalog";
-import type { StoreReport, StoreReportDetail, StoreReportLineItem } from "../repositories/reports";
+import type {
+  StoreReport,
+  StoreReportApprovalEvent,
+  StoreReportDetail,
+  StoreReportLineItem,
+} from "../repositories/reports";
 import type { StoreWorkspaceUser } from "../repositories/users";
 import { pageDocument, pageHeaderView, topBarView } from "./layout";
 
@@ -18,6 +23,82 @@ const formatChf = (amountCents: number) => `CHF ${(amountCents / 100).toFixed(2)
 
 const reportStatusLabel = (status: string) =>
   `<span class="report-status-label status-${escape(status)}">${escape(storeStatusLabel(status))}</span>`;
+
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
+
+const approvalTimelineView = (report: StoreReportDetail, events: StoreReportApprovalEvent[]) => {
+  const regional = events.find((event) => event.role === "regional_manager");
+  const quality = events.find((event) => event.role === "quality");
+  const decisionIsFinal = ["approved", "rejected", "credit_note_pending", "completed"].includes(report.status);
+  const finalDecision = decisionIsFinal ? (quality ?? regional) : undefined;
+  const escalatedToQuality = Boolean(report.escalated_at && report.escalation_target_role === "quality" && !regional);
+  const requiresRegional =
+    report.total_amount >= 20_000 ||
+    Boolean(regional) ||
+    report.status === "pending_regional" ||
+    report.status === "pending_quality" ||
+    report.status === "rejected";
+  const requiresQuality =
+    escalatedToQuality || (requiresRegional && report.total_amount >= 100_000 && regional?.decision !== "reject");
+  const automaticallyApproved =
+    !requiresRegional && !finalDecision && ["approved", "credit_note_pending", "completed"].includes(report.status);
+  const step = (
+    title: string,
+    detail: string,
+    timestamp: string | undefined,
+    state: "completed" | "current" | "upcoming" | "skipped" | "rejected",
+    note?: string,
+  ) =>
+    `<li class="timeline-${state}"><span class="timeline-marker" aria-hidden="true"></span><div><strong>${escape(title)}</strong><span>${escape(detail)}</span>${note ? `<span class="timeline-note">${escape(note)}</span>` : ""}${timestamp ? `<time datetime="${escape(timestamp)}">${escape(formatDateTime(timestamp))}</time>` : ""}</div></li>`;
+  const regionalDetail = !requiresRegional
+    ? "Not required"
+    : regional
+      ? regional.decision === "approve"
+        ? "Approved"
+        : "Rejected"
+      : report.status === "pending_regional"
+        ? "Awaiting decision"
+        : "Awaiting Regional decision";
+  const qualityWaitingForRegional = !regional && report.status === "pending_regional" && requiresQuality;
+  const qualityDetail = qualityWaitingForRegional
+    ? "Waiting for Regional approval"
+    : !requiresQuality && !quality
+      ? "Not required"
+      : quality
+        ? quality.decision === "approve"
+          ? "Approved"
+          : "Rejected"
+        : report.status === "pending_quality"
+          ? "Awaiting decision"
+          : "Awaiting Quality decision";
+  const finalDetail = finalDecision
+    ? finalDecision.decision === "approve"
+      ? "Approved"
+      : "Rejected"
+    : automaticallyApproved
+      ? "Approved automatically"
+      : "Decision pending";
+  const finalState = finalDecision
+    ? finalDecision.decision === "reject"
+      ? "rejected"
+      : "completed"
+    : automaticallyApproved
+      ? "completed"
+      : report.status === "pending_regional" || report.status === "pending_quality"
+        ? "upcoming"
+        : "current";
+  const finalTimestamp = finalDecision?.created_at ?? (automaticallyApproved ? report.created_at : undefined);
+
+  return `<section class="approval-timeline-section" aria-labelledby="approval-timeline-title"><h2 id="approval-timeline-title">Approval timeline</h2><ol class="approval-timeline">${step("Report submitted", "Sent to approval", report.created_at, "completed")}${step("Regional approval", regionalDetail, escalatedToQuality ? (report.escalated_at ?? undefined) : regional?.created_at, !requiresRegional ? "skipped" : regional ? (regional.decision === "reject" ? "rejected" : "completed") : report.status === "pending_regional" ? "current" : "upcoming", escalatedToQuality ? "Escalated to Quality Management" : undefined)}${step("Quality approval", qualityDetail, quality?.created_at, !requiresQuality && !quality ? "skipped" : quality ? (quality.decision === "reject" ? "rejected" : "completed") : report.status === "pending_quality" ? "current" : "upcoming")}${step("Final decision", finalDetail, finalTimestamp, finalState)}</ol></section>`;
+};
 
 export const lineItemView = (products: Product[]) => html(lineItemMarkup(productOptions(products)));
 
@@ -63,10 +144,11 @@ export const reportDetailsView = (
   user: StoreWorkspaceUser | null,
   report: StoreReportDetail,
   items: StoreReportLineItem[],
+  events: StoreReportApprovalEvent[],
 ) =>
   pageDocument({
     title: "Report details",
-    body: `${topBarView({ session: "Store workspace ·", emphasis: user?.store_name ?? claims.store_id ?? "", backHref: "/app" })}<main class="page">${pageHeaderView({ eyebrow: "Report details", title: `Report ${report.id}`, lede: "A read-only record of this submitted damage report." })}<section class="card report-detail-card"><dl class="report-detail-summary"><div class="report-reference-field"><dt>Report reference</dt><dd class="report-id">${escape(report.id)}</dd></div><div><dt>Status</dt><dd>${reportStatusLabel(report.status)}</dd></div><div><dt>Created</dt><dd>${escape(report.created_at)}</dd></div><div><dt>Total amount</dt><dd>${formatChf(report.total_amount)}</dd></div>${report.escalated_at ? `<div><dt>Escalation</dt><dd>Escalated to ${escape(report.escalation_target_role ?? "fallback approver role")}</dd></div>` : ""}${report.rejection_reason ? `<div class="report-detail-wide"><dt>Rejection reason</dt><dd>${escape(report.rejection_reason)}</dd></div>` : ""}</dl><h2>Damaged items</h2>${items.length ? `<div class="report-detail-items">${items.map((item) => `<article><h3>${escape(item.sku)} — ${escape(item.product_name)}</h3><dl><div><dt>Quantity</dt><dd>${item.quantity}</dd></div><div><dt>Reason</dt><dd>${escape(reasonLabel(item.reason_code))}</dd></div><div><dt>Photo</dt><dd>${escape(photoLabel(item.photo_id, item.photo_status))}${photoView(report.id, item)}</dd></div>${item.description?.trim() ? `<div class="report-detail-wide"><dt>Additional details</dt><dd>${escape(item.description)}</dd></div>` : ""}</dl></article>`).join("")}</div>` : '<p class="empty-state">No line items were recorded for this report.</p>'}</section></main>`,
+    body: `${topBarView({ session: "Store workspace ·", emphasis: user?.store_name ?? claims.store_id ?? "", backHref: "/app" })}<main class="page">${pageHeaderView({ eyebrow: "Report details", title: `Report ${report.id}`, lede: "A read-only record of this submitted damage report." })}<section class="card report-detail-card"><dl class="report-detail-summary"><div class="report-reference-field"><dt>Report reference</dt><dd class="report-id">${escape(report.id)}</dd></div><div><dt>Status</dt><dd>${reportStatusLabel(report.status)}</dd></div><div><dt>Created</dt><dd>${escape(report.created_at)}</dd></div><div><dt>Total amount</dt><dd>${formatChf(report.total_amount)}</dd></div>${report.escalated_at ? `<div><dt>Escalation</dt><dd>Escalated to ${escape(report.escalation_target_role ?? "fallback approver role")}</dd></div>` : ""}${report.rejection_reason ? `<div class="report-detail-wide"><dt>Rejection reason</dt><dd>${escape(report.rejection_reason)}</dd></div>` : ""}</dl>${approvalTimelineView(report, events)}<h2>Damaged items</h2>${items.length ? `<div class="report-detail-items">${items.map((item) => `<article><h3>${escape(item.sku)} — ${escape(item.product_name)}</h3><dl><div><dt>Quantity</dt><dd>${item.quantity}</dd></div><div><dt>Reason</dt><dd>${escape(reasonLabel(item.reason_code))}</dd></div><div><dt>Photo</dt><dd>${escape(photoLabel(item.photo_id, item.photo_status))}${photoView(report.id, item)}</dd></div>${item.description?.trim() ? `<div class="report-detail-wide"><dt>Additional details</dt><dd>${escape(item.description)}</dd></div>` : ""}</dl></article>`).join("")}</div>` : '<p class="empty-state">No line items were recorded for this report.</p>'}</section></main>`,
   });
 
 const lineItemMarkup = (options: string) =>
