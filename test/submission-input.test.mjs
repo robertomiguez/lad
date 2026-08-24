@@ -11,9 +11,16 @@ const submission = {
   id: "report-submission-100",
   storeId: claims.store_id,
   reporterId: claims.user_id,
-  reportDate: "2026-08-20",
   totalAmountCents: 12_500,
-  items: [{ id: "line-submission-100", productId: "product-100", quantity: 1, reasonCode: "damaged" }],
+  items: [
+    {
+      id: "line-submission-100",
+      productId: "product-100",
+      quantity: 1,
+      reasonCode: "damaged",
+      description: "Outer packaging was wet.",
+    },
+  ],
 };
 
 test("parses an htmx form submission into the API submission shape", async () => {
@@ -21,8 +28,8 @@ test("parses an htmx form submission into the API submission shape", async () =>
   form.set("report_id", submission.id);
   form.set("store_id", submission.storeId);
   form.set("reporter_id", submission.reporterId);
-  form.set("report_date", submission.reportDate);
   form.set("total_amount", "125.00");
+  form.set("description", submission.items[0].description);
   form.set("line_item_id", submission.items[0].id);
   form.set("product_id", submission.items[0].productId);
   form.set("quantity", "1");
@@ -35,7 +42,15 @@ test("parses an htmx form submission into the API submission shape", async () =>
 test("requires a well-shaped submission bound to the signed-in store user", () => {
   assert.equal(hasValidSubmissionShape(submission, claims, submission.id), true);
   assert.equal(hasValidSubmissionShape({ ...submission, reporterId: "another-user" }, claims, submission.id), false);
-  assert.equal(hasValidSubmissionShape({ ...submission, reportDate: "20/08/2026" }, claims, submission.id), false);
+  assert.equal(hasValidSubmissionShape({ ...submission, totalAmountCents: 12_500.5 }, claims, submission.id), false);
+  assert.equal(
+    hasValidSubmissionShape(
+      { ...submission, items: [{ ...submission.items[0], description: "x".repeat(501) }] },
+      claims,
+      submission.id,
+    ),
+    false,
+  );
   assert.equal(hasValidSubmissionShape(submission, claims, "different-report"), false);
 });
 

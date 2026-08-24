@@ -75,7 +75,7 @@ After choosing Zoe Store, `/app` opens the capture form.
 
 1. The editor starts disabled. Select **New report**, or choose **Continue editing** on a saved draft, to unlock it.
 2. To pause work, select **Save draft** at any point. Incomplete fields and optional photos remain only on the device; drafts do not sync or enter approval. The editor returns to its disabled state.
-3. To submit a report, enter a date and total in CHF, then add one or more complete line items. Each needs a product, quantity, and reason. A photo is optional.
+3. To submit a report, enter the total in CHF, then add one or more complete line items. Each needs a product, quantity, and reason, plus optional additional details for approvers. A photo is optional. The system records the report timestamp automatically.
 4. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**, and the editor returns to its disabled state.
 
 **Cancel editing** abandons the current unsaved insert or changes to an open draft and returns the editor to its disabled state. A previously saved draft remains available in **My reports**.

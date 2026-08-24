@@ -37,9 +37,7 @@ const formatCreatedAt = (timestamp) => {
   }).format(createdAt);
 };
 
-const formatSkus = (skus) => (Array.isArray(skus) && skus.length ? skus.join(", ") : null);
-
-const shortReportId = (id) => `${id.slice(0, 7)}...`;
+const shortReportId = (id) => `id:${id.slice(0, 8)}..`;
 
 export function createReportsRenderer({
   allPhotos,
@@ -82,16 +80,12 @@ export function createReportsRenderer({
             created.className = "report-created";
             created.textContent = `Created: ${formatCreatedAt(report.createdAt || report.savedAt)}`;
             primary.append(reference, created);
-            const skus = formatSkus(report.skus);
-            if (skus) {
-              const sku = document.createElement("span");
-              sku.className = "report-skus";
-              sku.textContent = `SKU: ${skus}`;
-              primary.append(sku);
-            }
             const status = document.createElement("div");
             status.className = "report-summary-status";
-            status.textContent = `${workflow} · ${formatAmount(report.totalAmountCents)}`;
+            const statusLabel = document.createElement("span");
+            statusLabel.className = `report-status-label status-${report.workflowStatus || report.status}`;
+            statusLabel.textContent = workflow;
+            status.append(statusLabel, ` · ${formatAmount(report.totalAmountCents)}`);
             summary.append(primary, status);
             item.append(summary);
             const details = document.createElement("div");
@@ -121,7 +115,7 @@ export function createReportsRenderer({
                 detail.append(image);
               }
               const label = document.createElement("span");
-              label.textContent = `${sku || "SKU unavailable"} · ${formatPhotoStatus(photo.status)}`;
+              label.textContent = `${sku ? `SKU: ${sku}` : "SKU unavailable"} · ${formatPhotoStatus(photo.status)}`;
               detail.append(label);
               details.append(detail);
             }

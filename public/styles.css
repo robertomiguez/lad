@@ -33,7 +33,8 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 button,
@@ -59,7 +60,8 @@ button:hover,
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgba(0, 0, 0, 0.28);
   outline-offset: 2px;
 }
@@ -72,7 +74,8 @@ a:hover {
   text-decoration: underline;
 }
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-width: 0;
   min-height: 2.65rem;
@@ -87,12 +90,36 @@ input[type="file"] {
   padding: 0.38rem;
   font-size: 0.8rem;
 }
+textarea {
+  resize: vertical;
+}
+.field-hint {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
 label {
   display: grid;
   gap: 0.35rem;
   color: #343434;
   font-size: 0.88rem;
   font-weight: 700;
+}
+.currency-input {
+  position: relative;
+  display: block;
+}
+.currency-input-prefix {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.7rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  transform: translateY(-50%);
+}
+.currency-input input {
+  padding-left: 3.25rem;
 }
 
 .topbar {
@@ -221,7 +248,8 @@ h2 {
   grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.4fr) minmax(125px, 0.65fr);
   grid-template-areas:
     "barcode product quantity"
-    "reason photo photo";
+    "reason photo photo"
+    "description description description";
   gap: 0.8rem;
   align-items: start;
   min-width: 0;
@@ -251,6 +279,9 @@ h2 {
 }
 .photo-field {
   grid-area: photo;
+}
+.item-description-field {
+  grid-area: description;
 }
 .barcode-result {
   min-height: 1.1rem;
@@ -460,6 +491,12 @@ span.report-reference {
 .report-created {
   color: var(--muted);
 }
+.report-status-label.status-rejected {
+  color: var(--danger);
+}
+.report-status-label.status-completed {
+  color: #1769aa;
+}
 .report-details {
   display: grid;
   gap: 0.2rem;
@@ -522,7 +559,19 @@ span.report-reference {
   margin: 0.2rem 0 0;
   overflow-wrap: anywhere;
 }
+.report-detail-summary .report-id {
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.report-detail-summary .report-reference-field {
+  grid-column: span 2;
+}
 .report-detail-summary .report-detail-wide {
+  grid-column: 1 / -1;
+}
+.report-detail-items .report-detail-wide {
   grid-column: 1 / -1;
 }
 .report-detail-items {
@@ -538,6 +587,16 @@ span.report-reference {
 .report-detail-items h3 {
   margin-bottom: 0.75rem;
   font-size: 1rem;
+}
+.report-detail-photo {
+  display: block;
+  width: min(100%, 20rem);
+  max-height: 16rem;
+  margin-top: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: contain;
+  background: #fff;
 }
 .discard-draft {
   color: var(--danger);
@@ -640,11 +699,20 @@ span.report-reference {
   display: grid;
   gap: 0.85rem;
 }
+.approval-notice {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #b9d5ee;
+  border-radius: 10px;
+  color: #173d5b;
+  background: #edf6fd;
+  font-weight: 700;
+}
 .approval-card {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(22rem, 1.3fr);
   gap: 1rem;
-  align-items: center;
+  align-items: start;
   padding: 1rem 1.1rem;
 }
 .approval-meta {
@@ -663,20 +731,28 @@ span.report-reference {
   font-size: 1.1rem;
   font-weight: 800;
 }
-.approval-actions form {
+.approval-actions {
+  display: grid;
+  gap: 0.65rem;
+}
+.approval-form {
   display: flex;
-  gap: 0.45rem;
+  justify-content: flex-end;
+}
+.rejection-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
   align-items: end;
 }
-.approval-actions input {
-  width: 170px;
-  min-height: 2.3rem;
+.rejection-form textarea {
+  min-height: 5.5rem;
 }
-.approval-actions form:last-child button {
+.rejection-form button {
   background: #fbecea;
   color: var(--danger);
 }
-.approval-actions form:last-child button:hover {
+.rejection-form button:hover {
   background: var(--danger);
   color: #fff;
 }
@@ -727,7 +803,8 @@ mark {
       "barcode barcode"
       "product product"
       "quantity reason"
-      "photo photo";
+      "photo photo"
+      "description description";
   }
   .barcode-camera-button {
     grid-area: barcode;
@@ -735,6 +812,9 @@ mark {
   }
   .approval-card {
     grid-template-columns: 1fr;
+  }
+  .approval-form {
+    justify-content: flex-start;
   }
   .report-detail-summary,
   .report-detail-items article dl {
@@ -764,13 +844,15 @@ mark {
       "photo";
   }
   .approval-actions,
-  .approval-actions form {
+  .approval-form,
+  .rejection-form {
     width: 100%;
   }
-  .approval-actions input,
-  .approval-actions button {
-    flex: 1;
-    width: auto;
+  .rejection-form {
+    grid-template-columns: 1fr;
+  }
+  .rejection-form button {
+    width: 100%;
   }
   .page-header {
     align-items: stretch;

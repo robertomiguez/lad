@@ -1,12 +1,13 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { reportWorkflow } from "../../src/lib/workflow-client";
 
 const schema = `
 CREATE TABLE IF NOT EXISTS stores (id TEXT PRIMARY KEY, name TEXT NOT NULL, region TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, store_id TEXT);
 CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, sku TEXT NOT NULL, barcode TEXT, name TEXT NOT NULL, active INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, store_id TEXT NOT NULL, reporter_id TEXT NOT NULL, status TEXT NOT NULL, total_amount INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, validation_error_code TEXT, rejection_reason TEXT, escalated_at TEXT, escalation_target_role TEXT);
-CREATE TABLE IF NOT EXISTS line_items (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity INTEGER NOT NULL, reason_code TEXT NOT NULL, photo_id TEXT);
+CREATE TABLE IF NOT EXISTS line_items (id TEXT PRIMARY KEY, report_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity INTEGER NOT NULL, reason_code TEXT NOT NULL, description TEXT, photo_id TEXT);
 CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, line_item_id TEXT NOT NULL, r2_key TEXT NOT NULL, status TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS credit_notes (id TEXT PRIMARY KEY, report_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL, erp_document_id TEXT);
 CREATE TABLE IF NOT EXISTS idempotency_keys (key TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL);
@@ -86,15 +87,122 @@ describe("Worker integration", () => {
     await expect(opsPage.text()).resolves.toContain('hx-get="/fragments/ops"');
   });
 
+  it("requires a multiline reason only when rejecting an approval", async () => {
+    await env.DB.prepare(
+      "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        "report-approval-100",
+        "store-zurich-01",
+        "user-store-zurich",
+        "pending_regional",
+        12_500,
+        "2026-08-23T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+      )
+      .run();
+
+    const regionalCookie = await login("user-regional-north");
+    const response = await SELF.fetch("https://example.com/fragments/approvals", {
+      headers: { cookie: regionalCookie },
+    });
+    const markup = await response.text();
+
+    expect(markup).toContain('class="approval-form"');
+    expect(markup).toContain('class="rejection-form"');
+    expect(markup).toContain(
+      '<textarea name="reason" rows="3" placeholder="Explain why this report is rejected" required>',
+    );
+  });
+
+  it("shows a helpful message when an htmx approval action is no longer assigned to the approver", async () => {
+    await env.DB.prepare(
+      "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        "report-moved-to-quality",
+        "store-zurich-01",
+        "user-store-zurich",
+        "pending_quality",
+        12_500,
+        "2026-08-23T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+      )
+      .run();
+
+    const regionalCookie = await login("user-regional-north");
+    const response = await SELF.fetch("https://example.com/api/reports/report-moved-to-quality/decision", {
+      method: "POST",
+      headers: { "HX-Request": "true", cookie: regionalCookie },
+      body: new URLSearchParams({ decision: "reject", reason: "No longer relevant" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toContain(
+      "This report has moved to Quality review and is no longer assigned to you.",
+    );
+  });
+
+  it("shows an uploaded item photo on the authenticated report details page", async () => {
+    const reportId = "20acd40c-b827-44b6-9755-56a2520dd7f4";
+    const lineItemId = "line-photo-100";
+    const photoId = "photo-100";
+    const photoKey = `reports/${reportId}/${photoId}`;
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        reportId,
+        "store-zurich-01",
+        "user-store-zurich",
+        "submitted",
+        12_500,
+        "2026-08-23T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+      ),
+      env.DB.prepare(
+        "INSERT INTO line_items (id, report_id, product_id, quantity, reason_code, photo_id) VALUES (?, ?, ?, ?, ?, ?)",
+      ).bind(lineItemId, reportId, "product-100", 1, "damaged", photoId),
+      env.DB.prepare("INSERT INTO photos (id, line_item_id, r2_key, status) VALUES (?, ?, ?, ?)").bind(
+        photoId,
+        lineItemId,
+        photoKey,
+        "uploaded",
+      ),
+    ]);
+    await env.PHOTOS.put(photoKey, "photo bytes", { httpMetadata: { contentType: "image/jpeg" } });
+
+    const storeCookie = await login("user-store-zurich");
+    const details = await SELF.fetch(`https://example.com/reports/${reportId}`, { headers: { cookie: storeCookie } });
+    const detailsMarkup = await details.text();
+    expect(detailsMarkup).toContain(reportId);
+    expect(detailsMarkup).toContain("CHF 125.00");
+    expect(detailsMarkup).toContain(`src="/api/reports/${reportId}/line-items/${lineItemId}/photo"`);
+
+    const photo = await SELF.fetch(`https://example.com/api/reports/${reportId}/line-items/${lineItemId}/photo`, {
+      headers: { cookie: storeCookie },
+    });
+    expect(photo.status).toBe(200);
+    expect(photo.headers.get("content-type")).toBe("image/jpeg");
+    expect(new TextDecoder().decode(await photo.arrayBuffer())).toBe("photo bytes");
+  });
+
   it("submits idempotently and routes a CHF 1,000 report through both approvals", async () => {
     const reportId = "report-lifecycle-1000";
     const payload = {
       id: reportId,
       storeId: "store-zurich-01",
       reporterId: "user-store-zurich",
-      reportDate: "2026-08-20",
       totalAmountCents: 100_000,
-      items: [{ id: "line-lifecycle-1000", productId: "product-100", quantity: 1, reasonCode: "damaged" }],
+      items: [
+        {
+          id: "line-lifecycle-1000",
+          productId: "product-100",
+          quantity: 1,
+          reasonCode: "damaged",
+          description: "Outer packaging was wet after unloading.",
+        },
+      ],
     };
     const storeCookie = await login("user-store-zurich");
     const submit = () =>
@@ -114,6 +222,7 @@ describe("Worker integration", () => {
     expect(detail.status).toBe(200);
     const detailMarkup = await detail.text();
     expect(detailMarkup).toContain("A read-only record of this submitted damage report.");
+    expect(detailMarkup).toContain("Outer packaging was wet after unloading.");
     expect(detailMarkup).toContain("SKU-100 — Sparkling Water");
     expect(detailMarkup).toContain("Quantity");
     expect(detailMarkup).not.toContain("<button");
@@ -126,6 +235,8 @@ describe("Worker integration", () => {
     });
     expect(regional.status).toBe(200);
     expect(((await regional.json()) as { status: string }).status).toBe("pending_quality");
+
+    await reportWorkflow(env, reportId).reconcilePendingStatus("pending_regional");
 
     const qualityCookie = await login("user-quality-hq");
     const quality = await SELF.fetch(`https://example.com/api/reports/${reportId}/decision`, {

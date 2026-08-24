@@ -81,6 +81,7 @@ const addLineItem = (item = {}) => {
   row.querySelector("[name=product_id]").value = item.productId || "";
   row.querySelector("[name=quantity]").value = item.quantity ?? "";
   row.querySelector("[name=reason_code]").value = item.reasonCode || "";
+  row.querySelector("[name=description]").value = item.description || "";
   if (item.photoId) row.dataset.photoId = item.photoId;
   destination.append(fragment);
   productCatalog.apply(destination);
@@ -92,7 +93,6 @@ const resetReportForm = (form) => {
   form.reset();
   delete form.dataset.createdAt;
   form.elements.report_id.value = makeId();
-  form.elements.report_date.value = new Date().toISOString().slice(0, 10);
   const destination = document.querySelector("#line-items");
   if (destination) {
     destination.querySelectorAll(".line-item").forEach(clearPhotoPreview);
@@ -143,7 +143,7 @@ const startNewReport = () => {
   setEditorActive(form, true);
   document.querySelector("#form-errors").textContent = "";
   showFormFeedback("");
-  form.elements.report_date.focus();
+  form.elements.total_amount.focus();
 };
 
 const cancelEditing = () => {
@@ -186,6 +186,7 @@ const collectReport = async (form) => {
           ? Number(row.querySelector("[name=quantity]").value)
           : null,
         reasonCode: row.querySelector("[name=reason_code]").value,
+        description: row.querySelector("[name=description]").value.trim(),
         photoId,
       };
     }),
@@ -198,7 +199,6 @@ const collectReport = async (form) => {
     id: reportId,
     storeId: form.elements.store_id.value,
     reporterId: form.elements.reporter_id.value,
-    reportDate: form.elements.report_date.value,
     totalAmountCents: totalAmount ? Math.round(Number(totalAmount) * 100) : null,
     items,
   };
@@ -225,14 +225,13 @@ const editDraft = async (draft) => {
   (draft.items?.length ? draft.items : [{}]).forEach(addLineItem);
   form.elements.report_id.value = draft.id;
   form.dataset.createdAt = draft.createdAt || draft.savedAt;
-  form.elements.report_date.value = draft.reportDate || "";
   form.elements.total_amount.value = Number.isInteger(draft.totalAmountCents)
     ? (draft.totalAmountCents / 100).toFixed(2)
     : "";
   setEditorActive(form, true);
   document.querySelector("#form-errors").textContent = "";
   showFormFeedback("");
-  form.elements.report_date.focus();
+  form.elements.total_amount.focus();
 };
 
 const discardDraft = async (draft) => {

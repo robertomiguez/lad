@@ -8,7 +8,7 @@ import {
 } from "../domain/roles";
 import { REPORT_STATUS } from "../domain/reports";
 import { jsonError, jsonResponse } from "../lib/http";
-import { decideWorkflow, workflowDecisionStatus } from "../lib/workflow-client";
+import { decideWorkflow, reconcilePendingWorkflow, workflowDecisionStatus } from "../lib/workflow-client";
 import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 import { approvalWorklistView, approvalsPageView } from "../views/approvals";
@@ -36,12 +36,22 @@ export async function decideReport(
   const reports = new ReportsRepository(env.DB);
   const report = await reports.findDecisionTarget(reportId);
   if (!report) return jsonError("Report not found", 404);
-  if (
-    !roleCanAccessStore(claims.role, claims.store_id, report.store_id) ||
-    (claims.role === ROLE.regionalManager && report.status !== REPORT_STATUS.pendingRegional) ||
-    (claims.role === ROLE.quality && report.status !== REPORT_STATUS.pendingQuality)
-  )
+  if (!roleCanAccessStore(claims.role, claims.store_id, report.store_id)) return forbidden();
+  const assignedStatus =
+    claims.role === ROLE.regionalManager ? REPORT_STATUS.pendingRegional : REPORT_STATUS.pendingQuality;
+  if (report.status !== assignedStatus) {
+    if (request.headers.get("HX-Request") === "true") {
+      const message =
+        report.status === REPORT_STATUS.pendingQuality
+          ? "This report has moved to Quality review and is no longer assigned to you."
+          : report.status === REPORT_STATUS.pendingRegional
+            ? "This report is still waiting for Regional review."
+            : "This report has already been decided and is no longer awaiting approval.";
+      const results = await reports.listForApproval(claims.role as ApprovalRole, claims.store_id);
+      return approvalWorklistView(results, message);
+    }
     return forbidden();
+  }
 
   let input: { decision?: "approve" | "reject"; reason?: string };
   try {
@@ -54,12 +64,23 @@ export async function decideReport(
   if (input.decision !== "approve" && input.decision !== "reject")
     return jsonError("Decision must be approve or reject", 422);
 
-  const response = await decideWorkflow(
+  let response = await decideWorkflow(
     env,
     reportId,
     { role: claims.role as ApprovalRole, actor: claims.user_id, decision: input.decision, reason: input.reason },
     correlationId,
   );
+  if (!response.ok && response.error === "approval_not_assigned_to_role") {
+    const restored = await reconcilePendingWorkflow(env, reportId, assignedStatus);
+    if (restored) {
+      response = await decideWorkflow(
+        env,
+        reportId,
+        { role: claims.role as ApprovalRole, actor: claims.user_id, decision: input.decision, reason: input.reason },
+        correlationId,
+      );
+    }
+  }
   if (!response.ok) return jsonError(response.error, workflowDecisionStatus(response.error));
   if (request.headers.get("HX-Request") === "true") return approvalsFragment(env, claims);
 
