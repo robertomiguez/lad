@@ -116,6 +116,42 @@ describe("Worker integration", () => {
     );
   });
 
+  it("shows escalated Regional reports to Quality for supervision without assigning the decision", async () => {
+    await env.DB.prepare(
+      "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at, escalated_at, escalation_target_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        "report-overdue-regional",
+        "store-zurich-01",
+        "user-store-zurich",
+        "pending_regional",
+        25_000,
+        "2026-08-20T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+        "2026-08-23T10:00:00.000Z",
+        "quality",
+      )
+      .run();
+
+    const qualityCookie = await login("user-quality-hq");
+    const qualityWorklist = await SELF.fetch("https://example.com/fragments/approvals", {
+      headers: { cookie: qualityCookie },
+    });
+    const qualityMarkup = await qualityWorklist.text();
+
+    expect(qualityMarkup).toContain("Escalations requiring Regional approval");
+    expect(qualityMarkup).toContain("report-overdue-regional");
+    expect(qualityMarkup).toContain("Awaiting Regional approval — overdue 3 working days.");
+    expect(qualityMarkup).toContain("Regional retains ownership of this decision.");
+    expect(qualityMarkup).not.toContain("/api/reports/report-overdue-regional/decision");
+
+    const regionalCookie = await login("user-regional-north");
+    const regionalWorklist = await SELF.fetch("https://example.com/fragments/approvals", {
+      headers: { cookie: regionalCookie },
+    });
+    await expect(regionalWorklist.text()).resolves.toContain("/api/reports/report-overdue-regional/decision");
+  });
+
   it("shows a helpful message when an htmx approval action is no longer assigned to the approver", async () => {
     await env.DB.prepare(
       "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",

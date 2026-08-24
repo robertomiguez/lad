@@ -137,6 +137,17 @@ export class ReportsRepository {
     return (await query.all<ApprovalReport>()).results;
   }
 
+  async listEscalatedRegionalForQuality() {
+    return (
+      await this.db
+        .prepare(
+          "SELECT id, store_id, status, total_amount, escalated_at, escalation_target_role FROM reports WHERE status = ? AND escalated_at IS NOT NULL AND escalation_target_role = ? ORDER BY escalated_at ASC",
+        )
+        .bind(REPORT_STATUS.pendingRegional, ROLE.quality)
+        .all<ApprovalReport>()
+    ).results;
+  }
+
   findDecisionTarget(reportId: string) {
     return this.db.prepare("SELECT store_id, status FROM reports WHERE id = ?").bind(reportId).first<DecisionReport>();
   }
