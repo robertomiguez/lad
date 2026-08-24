@@ -774,6 +774,9 @@ span.report-reference {
   display: grid;
   gap: 0.85rem;
 }
+.approval-supervisory-queue {
+  margin-top: 1.5rem;
+}
 .approval-notice {
   margin: 0 0 0.85rem;
   padding: 0.75rem 0.9rem;

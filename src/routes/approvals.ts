@@ -13,10 +13,18 @@ import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
 import { approvalWorklistView, approvalsPageView } from "../views/approvals";
 
+async function approvalWorklist(env: Env, claims: Claims, notice?: string) {
+  const reports = new ReportsRepository(env.DB);
+  const [assignedReports, escalatedRegionalReports] = await Promise.all([
+    reports.listForApproval(claims.role as ApprovalRole, claims.store_id),
+    claims.role === ROLE.quality ? reports.listEscalatedRegionalForQuality() : Promise.resolve([]),
+  ]);
+  return approvalWorklistView(assignedReports, notice, escalatedRegionalReports);
+}
+
 export async function approvalsFragment(env: Env, claims: Claims) {
   if (!requireRole(claims, APPROVAL_ROLES)) return forbidden();
-  const results = await new ReportsRepository(env.DB).listForApproval(claims.role as ApprovalRole, claims.store_id);
-  return approvalWorklistView(results);
+  return approvalWorklist(env, claims);
 }
 
 export function approvalsPage(claims: Claims) {
@@ -47,8 +55,7 @@ export async function decideReport(
           : report.status === REPORT_STATUS.pendingRegional
             ? "This report is still waiting for Regional review."
             : "This report has already been decided and is no longer awaiting approval.";
-      const results = await reports.listForApproval(claims.role as ApprovalRole, claims.store_id);
-      return approvalWorklistView(results, message);
+      return approvalWorklist(env, claims, message);
     }
     return forbidden();
   }
