@@ -9,7 +9,7 @@ export const opsWorklistView = (reports: OpsReport[]) =>
       ? `<div class="ops-list">${reports
           .map(
             (report) =>
-              `<article class="ops-card"><strong>${escape(report.id)}</strong><span>${escape(report.status)}${report.validation_error_code ? ` · ${escape(report.validation_error_code)}` : ""}${report.escalated_at ? ` · overdue; escalation role: ${escape(report.escalation_target_role ?? "unassigned")}` : ""}${report.credit_note_status ? ` · credit note: ${escape(report.credit_note_status)}` : ""}</span>${report.status === REPORT_STATUS.erpError && report.credit_note_status === "failed" ? `<form hx-post="/api/reports/${encodeURIComponent(report.id)}/retry-erp" hx-target="#ops-worklist" hx-swap="innerHTML"><button>Retry ERP write</button></form>` : ""}</article>`,
+              `<article class="ops-card"><strong><a class="report-id ops-reference" href="/approvals/${encodeURIComponent(report.id)}" aria-label="View report ${escape(report.id)}">${escape(report.id)}</a></strong><span>${escape(report.status)}${report.validation_error_code ? ` · ${escape(report.validation_error_code)}` : ""}${report.escalated_at ? ` · overdue; escalation role: ${escape(report.escalation_target_role ?? "unassigned")}` : ""}${report.credit_note_status ? ` · credit note: ${escape(report.credit_note_status)}` : ""}</span>${report.status === REPORT_STATUS.erpError && report.credit_note_status === "failed" ? `<form hx-post="/api/reports/${encodeURIComponent(report.id)}/retry-erp" hx-target="#ops-worklist" hx-swap="innerHTML"><button>Retry ERP write</button></form>` : ""}</article>`,
           )
           .join("")}</div>`
       : '<p class="empty-state">No stuck reports.</p>',

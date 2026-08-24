@@ -1,6 +1,6 @@
 import { forbidden, requireRole, type Claims } from "../auth";
 import { REPORT_STATUS } from "../domain/reports";
-import { ROLE } from "../domain/roles";
+import { APPROVAL_ROLES, ROLE, canAccessStore as roleCanAccessStore } from "../domain/roles";
 import { jsonError, jsonResponse } from "../lib/http";
 import { initializeWorkflow } from "../lib/workflow-client";
 import { logError, logTransition } from "../lib/observability";
@@ -207,8 +207,23 @@ export async function uploadPhoto(
 }
 
 export async function getPhoto(env: Env, claims: Claims, reportId: string, lineItemId: string) {
-  if (!requireRole(claims, [ROLE.store])) return forbidden();
-  const target = await new ReportsRepository(env.DB).findPhotoTarget(reportId, lineItemId, claims.store_id);
+  if (!requireRole(claims, [ROLE.store, ...APPROVAL_ROLES])) return forbidden();
+  const reports = new ReportsRepository(env.DB);
+  if (claims.role === ROLE.store) {
+    const target = await reports.findPhotoTarget(reportId, lineItemId, claims.store_id);
+    if (!target?.r2_key || target.photo_status !== "uploaded") return jsonError("Photo not found", 404);
+
+    const photo = await env.PHOTOS.get(target.r2_key);
+    if (!photo) return jsonError("Photo not found", 404);
+
+    const headers = new Headers({ "cache-control": "private, max-age=60" });
+    photo.writeHttpMetadata(headers);
+    headers.set("etag", photo.httpEtag);
+    return new Response(photo.body, { headers });
+  }
+
+  const target = await reports.findPhotoTargetForApproval(reportId, lineItemId);
+  if (!target || !roleCanAccessStore(claims.role, claims.store_id, target.store_id)) return forbidden();
   if (!target?.r2_key || target.photo_status !== "uploaded") return jsonError("Photo not found", 404);
 
   const photo = await env.PHOTOS.get(target.r2_key);

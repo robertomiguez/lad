@@ -11,7 +11,7 @@ import { jsonError, jsonResponse } from "../lib/http";
 import { decideWorkflow, reconcilePendingWorkflow, workflowDecisionStatus } from "../lib/workflow-client";
 import { ReportsRepository } from "../repositories/reports";
 import type { Env } from "../types";
-import { approvalWorklistView, approvalsPageView } from "../views/approvals";
+import { approvalDetailsPageView, approvalWorklistView, approvalsPageView } from "../views/approvals";
 
 async function approvalWorklist(env: Env, claims: Claims, notice?: string) {
   const reports = new ReportsRepository(env.DB);
@@ -33,6 +33,25 @@ export function approvalsPage(claims: Claims) {
   return approvalsPageView(approverRoleLabel, claims.role === ROLE.quality);
 }
 
+export async function approvalDetailsPage(env: Env, claims: Claims, reportId: string) {
+  if (!requireRole(claims, APPROVAL_ROLES)) return forbidden();
+  const reports = new ReportsRepository(env.DB);
+  const decisionTarget = await reports.findDecisionTarget(reportId);
+  if (!decisionTarget) return jsonError("Report not found", 404);
+  if (!roleCanAccessStore(claims.role, claims.store_id, decisionTarget.store_id)) return forbidden();
+  const detail = await reports.findDetailForApproval(reportId);
+  if (!detail) return jsonError("Report not found", 404);
+
+  const assignedStatus =
+    claims.role === ROLE.regionalManager ? REPORT_STATUS.pendingRegional : REPORT_STATUS.pendingQuality;
+  return approvalDetailsPageView(
+    roleLabel(claims.role),
+    detail.report,
+    detail.items,
+    detail.report.status === assignedStatus,
+  );
+}
+
 export async function decideReport(
   request: Request,
   env: Env,
@@ -49,6 +68,8 @@ export async function decideReport(
     claims.role === ROLE.regionalManager ? REPORT_STATUS.pendingRegional : REPORT_STATUS.pendingQuality;
   if (report.status !== assignedStatus) {
     if (request.headers.get("HX-Request") === "true") {
+      if (request.headers.get("HX-Target") === "approval-decision")
+        return new Response(null, { headers: { "HX-Redirect": "/approvals" } });
       const message =
         report.status === REPORT_STATUS.pendingQuality
           ? "This report has moved to Quality review and is no longer assigned to you."
@@ -89,7 +110,11 @@ export async function decideReport(
     }
   }
   if (!response.ok) return jsonError(response.error, workflowDecisionStatus(response.error));
-  if (request.headers.get("HX-Request") === "true") return approvalsFragment(env, claims);
+  if (request.headers.get("HX-Request") === "true") {
+    if (request.headers.get("HX-Target") === "approval-decision")
+      return new Response(null, { headers: { "HX-Redirect": "/approvals" } });
+    return approvalsFragment(env, claims);
+  }
 
   const updated = await reports.findDecisionResult(reportId);
   return jsonResponse({
