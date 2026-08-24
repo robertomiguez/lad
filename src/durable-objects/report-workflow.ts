@@ -88,6 +88,24 @@ export class ReportWorkflow extends DurableObject<WorkflowEnv> {
     return { ok: true, workflow: current };
   }
 
+  /**
+   * D1 is the source of truth used by the approval route. If a prior request
+   * completed its D1 write but was interrupted before persisting DO state,
+   * restore the pending workflow stage before retrying the decision.
+   */
+  async reconcilePendingStatus(status: typeof REPORT_STATUS.pendingRegional | typeof REPORT_STATUS.pendingQuality) {
+    const current = await this.ctx.storage.get<WorkflowState>("workflow");
+    if (!current) return false;
+    if (current.status === status) return true;
+
+    current.status = status;
+    current.escalated = false;
+    current.escalationTargetRole = undefined;
+    await this.ctx.storage.put("workflow", current);
+    await this.scheduleEscalation();
+    return true;
+  }
+
   async alarm() {
     const current = await this.ctx.storage.get<WorkflowState>("workflow");
     if (!current || !isPendingApprovalStatus(current.status) || current.escalated) return;

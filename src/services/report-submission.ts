@@ -1,7 +1,7 @@
 import { forbidden, requireRole, type Claims } from "../auth";
 import { REPORT_STATUS } from "../domain/reports";
 import { ROLE } from "../domain/roles";
-import { jsonResponse } from "../lib/http";
+import { jsonError, jsonResponse } from "../lib/http";
 import { initializeWorkflow } from "../lib/workflow-client";
 import { logError, logTransition } from "../lib/observability";
 import {
@@ -204,4 +204,18 @@ export async function uploadPhoto(
     logError(correlationId, "worker", "photo_upload_failed", reportId);
     return jsonResponse({ id: photoId, status: "failed", errorCode: "photo_upload_failed" }, 503);
   }
+}
+
+export async function getPhoto(env: Env, claims: Claims, reportId: string, lineItemId: string) {
+  if (!requireRole(claims, [ROLE.store])) return forbidden();
+  const target = await new ReportsRepository(env.DB).findPhotoTarget(reportId, lineItemId, claims.store_id);
+  if (!target?.r2_key || target.photo_status !== "uploaded") return jsonError("Photo not found", 404);
+
+  const photo = await env.PHOTOS.get(target.r2_key);
+  if (!photo) return jsonError("Photo not found", 404);
+
+  const headers = new Headers({ "cache-control": "private, max-age=60" });
+  photo.writeHttpMetadata(headers);
+  headers.set("etag", photo.httpEtag);
+  return new Response(photo.body, { headers });
 }

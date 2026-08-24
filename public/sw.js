@@ -87,7 +87,6 @@ const sync = async () => {
           id: report.id,
           storeId: report.storeId,
           reporterId: report.reporterId,
-          reportDate: report.reportDate,
           totalAmountCents: report.totalAmountCents,
           items: report.items,
         }),

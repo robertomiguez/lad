@@ -31,6 +31,9 @@ export const decideWorkflow = (
   correlationId: string,
 ): Promise<WorkflowDecisionResult> => reportWorkflow(env, reportId).decide(decision, correlationId);
 
+export const reconcilePendingWorkflow = (env: Env, reportId: string, status: "pending_regional" | "pending_quality") =>
+  reportWorkflow(env, reportId).reconcilePendingStatus(status);
+
 export const workflowDecisionStatus = (error: Exclude<WorkflowDecisionResult, { ok: true }>["error"]) =>
   ({
     workflow_not_initialized: 409,

@@ -26,6 +26,7 @@ export type StoreReportLineItem = {
   product_name: string;
   quantity: number;
   reason_code: string;
+  description: string | null;
   photo_id: string | null;
   photo_status: string | null;
 };
@@ -93,7 +94,7 @@ export class ReportsRepository {
     if (!report) return null;
     const items = await this.db
       .prepare(
-        "SELECT li.id, li.product_id, p.sku, p.name AS product_name, li.quantity, li.reason_code, li.photo_id, ph.status AS photo_status FROM line_items li JOIN products p ON p.id = li.product_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.report_id = ? ORDER BY li.rowid ASC",
+        "SELECT li.id, li.product_id, p.sku, p.name AS product_name, li.quantity, li.reason_code, li.description, li.photo_id, ph.status AS photo_status FROM line_items li JOIN products p ON p.id = li.product_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.report_id = ? ORDER BY li.rowid ASC",
       )
       .bind(reportId)
       .all<StoreReportLineItem>();
@@ -219,9 +220,9 @@ export class ReportsRepository {
       ...submission.items.map((item) =>
         this.db
           .prepare(
-            "INSERT OR IGNORE INTO line_items (id, report_id, product_id, quantity, reason_code, photo_id) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO line_items (id, report_id, product_id, quantity, reason_code, description, photo_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
           )
-          .bind(item.id, submission.id, item.productId, item.quantity, item.reasonCode, item.photoId ?? null),
+          .bind(item.id, submission.id, item.productId, item.quantity, item.reasonCode, item.description, item.photoId ?? null),
       ),
       ...submission.items
         .filter((item) => item.photoId)
@@ -236,10 +237,10 @@ export class ReportsRepository {
   findPhotoTarget(reportId: string, lineItemId: string, storeId: string | null) {
     return this.db
       .prepare(
-        "SELECT li.photo_id FROM line_items li JOIN reports r ON r.id = li.report_id WHERE li.id = ? AND li.report_id = ? AND r.store_id = ?",
+        "SELECT li.photo_id, ph.r2_key, ph.status AS photo_status FROM line_items li JOIN reports r ON r.id = li.report_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.id = ? AND li.report_id = ? AND r.store_id = ?",
       )
       .bind(lineItemId, reportId, storeId)
-      .first<{ photo_id: string | null }>();
+      .first<{ photo_id: string | null; r2_key: string | null; photo_status: string | null }>();
   }
 
   findPhotoStatus(photoId: string) {

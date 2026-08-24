@@ -6,7 +6,7 @@ import { approvalsFragment, approvalsPage, decideReport } from "./approvals";
 import { hello } from "./hello";
 import { opsFragment, opsPage, retryErpWrite } from "./ops";
 import { appPage, lineItemRow, myReports, productsResponse, reportDetailsPage, reportStatuses } from "./store";
-import { createReport, uploadPhoto } from "../services/report-submission";
+import { createReport, getPhoto, uploadPhoto } from "../services/report-submission";
 import type { Env } from "../types";
 
 type RouteContext = {
@@ -66,6 +66,12 @@ const protectedRoutes: ProtectedRoute[] = [
     method: "POST",
     path: "/api/reports",
     handle: ({ request, env, claims, correlationId }) => createReport(request, env, claims, correlationId),
+  },
+  {
+    method: "GET",
+    path: /^\/api\/reports\/([^/]+)\/line-items\/([^/]+)\/photo$/,
+    roles: ["store"],
+    handle: ({ env, claims, params: [reportId, lineItemId] }) => getPhoto(env, claims, reportId, lineItemId),
   },
   {
     method: "PUT",
