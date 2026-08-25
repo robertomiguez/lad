@@ -8,7 +8,7 @@ import {
   hasValidSubmissionShape,
   isJsonSubmissionRequest,
   parseSubmission,
-  validateSubmissionCatalog,
+  priceSubmission,
 } from "../lib/submission-input";
 import { CatalogRepository } from "../repositories/catalog";
 import { ReportsRepository } from "../repositories/reports";
@@ -30,7 +30,7 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
       message: "Please complete every required report and line-item field.",
     });
 
-  const { id: reportId, totalAmountCents } = submission;
+  const { id: reportId } = submission;
   const reports = new ReportsRepository(env.DB);
   const catalog = new CatalogRepository(env.DB);
   if (!hasValidSubmissionShape(submission, claims, request.headers.get("Idempotency-Key"))) {
@@ -51,7 +51,11 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
   if (existing === "forbidden") return forbidden();
   if (existing && existing.status !== REPORT_STATUS.syncError) {
     if (existing.status === REPORT_STATUS.submitted) {
-      const workflowResponse = await initializeWorkflow(env, submission, correlationId);
+      const workflowResponse = await initializeWorkflow(
+        env,
+        { reportId: existing.id, storeId: existing.store_id, totalAmountCents: existing.total_amount },
+        correlationId,
+      );
       if (!workflowResponse)
         return submissionErrorResponse(jsonRequest, {
           status: 503,
@@ -69,17 +73,38 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
     return submissionStatusResponse(jsonRequest, recovered, { message: "was already submitted." });
   }
 
-  const errorCode = await validateSubmissionCatalog(catalog, submission);
+  const pricing = await priceSubmission(catalog, submission);
   const timestamp = new Date().toISOString();
-  if (existing?.status === REPORT_STATUS.syncError) {
-    if (errorCode) {
+  if ("error" in pricing) {
+    const errorCode = pricing.error;
+    if (existing?.status === REPORT_STATUS.syncError) {
       await reports.updateValidationError(reportId, errorCode, timestamp);
       logError(correlationId, "worker", errorCode, reportId);
       const failed = { ...existing, validation_error_code: errorCode };
       return submissionValidationErrorResponse(jsonRequest, failed, `Report needs attention: ${errorCode}.`);
     }
+
+    await reports.createValidationFailure(submission, errorCode, timestamp);
+    await env.IDEMPOTENCY.put(`report:${reportId}`, reportId, { expirationTtl: 86_400 });
+    logTransition({
+      reportId,
+      correlationId,
+      fromStatus: REPORT_STATUS.pendingSync,
+      toStatus: REPORT_STATUS.syncError,
+      actor: claims.user_id,
+      component: "worker",
+      reason: errorCode,
+    });
+    return submissionValidationErrorResponse(
+      jsonRequest,
+      { id: reportId, status: REPORT_STATUS.syncError, total_amount: 0, validation_error_code: errorCode },
+      `Report needs attention: ${errorCode}.`,
+    );
+  }
+  const pricedSubmission = pricing.submission;
+  if (existing?.status === REPORT_STATUS.syncError) {
     try {
-      await reports.recoverSyncError(submission, timestamp);
+      await reports.recoverSyncError(pricedSubmission, timestamp);
       logTransition({
         reportId,
         correlationId,
@@ -88,7 +113,15 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
         actor: claims.user_id,
         component: "worker",
       });
-      const workflowResponse = await initializeWorkflow(env, submission, correlationId);
+      const workflowResponse = await initializeWorkflow(
+        env,
+        {
+          reportId: pricedSubmission.id,
+          storeId: pricedSubmission.storeId,
+          totalAmountCents: pricedSubmission.totalAmountCents,
+        },
+        correlationId,
+      );
       if (!workflowResponse)
         return submissionErrorResponse(jsonRequest, {
           status: 503,
@@ -112,29 +145,8 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
     }
   }
 
-  if (errorCode) {
-    await reports.createValidationFailure(submission, errorCode, timestamp);
-    await env.IDEMPOTENCY.put(`report:${reportId}`, reportId, { expirationTtl: 86_400 });
-    logTransition({
-      reportId,
-      correlationId,
-      fromStatus: REPORT_STATUS.pendingSync,
-      toStatus: REPORT_STATUS.syncError,
-      actor: claims.user_id,
-      component: "worker",
-      reason: errorCode,
-    });
-    const failed = {
-      id: reportId,
-      status: REPORT_STATUS.syncError,
-      total_amount: totalAmountCents,
-      validation_error_code: errorCode,
-    };
-    return submissionValidationErrorResponse(jsonRequest, failed, `Report needs attention: ${errorCode}.`);
-  }
-
   try {
-    await reports.createSubmittedReport(submission, timestamp);
+    await reports.createSubmittedReport(pricedSubmission, timestamp);
   } catch {
     const replay = await reports.findExistingForStore(reportId, claims.store_id);
     if (replay && replay !== "forbidden")
@@ -154,7 +166,15 @@ export async function createReport(request: Request, env: Env, claims: Claims, c
     actor: claims.user_id,
     component: "worker",
   });
-  const workflowResponse = await initializeWorkflow(env, submission, correlationId);
+  const workflowResponse = await initializeWorkflow(
+    env,
+    {
+      reportId: pricedSubmission.id,
+      storeId: pricedSubmission.storeId,
+      totalAmountCents: pricedSubmission.totalAmountCents,
+    },
+    correlationId,
+  );
   if (!workflowResponse)
     return submissionErrorResponse(jsonRequest, {
       status: 503,

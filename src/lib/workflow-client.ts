@@ -4,20 +4,13 @@ import type {
   WorkflowDecisionResult,
   WorkflowInitialization,
 } from "../durable-objects/report-workflow";
-import type { Submission } from "../domain/submission";
 import type { Env } from "../types";
 
 export const reportWorkflow = (env: Env, id: string): DurableObjectStub<ReportWorkflow> => env.REPORT_DO.getByName(id);
 
-const initializationFrom = (submission: Submission): WorkflowInitialization => ({
-  reportId: submission.id,
-  storeId: submission.storeId,
-  totalAmountCents: submission.totalAmountCents,
-});
-
-export async function initializeWorkflow(env: Env, submission: Submission, correlationId: string) {
+export async function initializeWorkflow(env: Env, initialization: WorkflowInitialization, correlationId: string) {
   try {
-    await reportWorkflow(env, submission.id).initialize(initializationFrom(submission), correlationId);
+    await reportWorkflow(env, initialization.reportId).initialize(initialization, correlationId);
     return true;
   } catch {
     return false;

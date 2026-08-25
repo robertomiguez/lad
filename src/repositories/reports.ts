@@ -1,6 +1,6 @@
 import { REPORT_STATUS, type ReportStatus } from "../domain/reports";
 import { ROLE, type ApprovalRole } from "../domain/roles";
-import type { Submission } from "../domain/submission";
+import type { PricedSubmission, Submission } from "../domain/submission";
 
 export type ExistingReport = {
   id: string;
@@ -14,6 +14,8 @@ export type StoreReportDetail = {
   id: string;
   status: string;
   total_amount: number;
+  currency: string;
+  tax_amount: number;
   created_at: string;
   rejection_reason: string | null;
   escalated_at: string | null;
@@ -25,6 +27,9 @@ export type StoreReportLineItem = {
   sku: string;
   product_name: string;
   quantity: number;
+  unit_price_cents: number;
+  tax_rate_bps: number;
+  line_total_amount: number;
   reason_code: string;
   description: string | null;
   photo_id: string | null;
@@ -92,7 +97,7 @@ export class ReportsRepository {
   async findDetailForStore(reportId: string, storeId: string | null) {
     const report = await this.db
       .prepare(
-        "SELECT id, status, total_amount, created_at, rejection_reason, escalated_at, escalation_target_role FROM reports WHERE id = ? AND store_id = ?",
+        "SELECT id, status, total_amount, currency, tax_amount, created_at, rejection_reason, escalated_at, escalation_target_role FROM reports WHERE id = ? AND store_id = ?",
       )
       .bind(reportId, storeId)
       .first<StoreReportDetail>();
@@ -103,7 +108,7 @@ export class ReportsRepository {
   async findDetailForApproval(reportId: string) {
     const report = await this.db
       .prepare(
-        "SELECT id, status, total_amount, created_at, rejection_reason, escalated_at, escalation_target_role FROM reports WHERE id = ?",
+        "SELECT id, status, total_amount, currency, tax_amount, created_at, rejection_reason, escalated_at, escalation_target_role FROM reports WHERE id = ?",
       )
       .bind(reportId)
       .first<StoreReportDetail>();
@@ -114,7 +119,7 @@ export class ReportsRepository {
   private async detailWithEvidence(report: StoreReportDetail) {
     const items = await this.db
       .prepare(
-        "SELECT li.id, li.product_id, p.sku, p.name AS product_name, li.quantity, li.reason_code, li.description, li.photo_id, ph.status AS photo_status FROM line_items li JOIN products p ON p.id = li.product_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.report_id = ? ORDER BY li.rowid ASC",
+        "SELECT li.id, li.product_id, COALESCE(NULLIF(li.sku_snapshot, ''), p.sku) AS sku, COALESCE(NULLIF(li.product_name_snapshot, ''), p.name) AS product_name, li.quantity, li.unit_price_cents, li.tax_rate_bps, li.line_total_amount, li.reason_code, li.description, li.photo_id, ph.status AS photo_status FROM line_items li JOIN products p ON p.id = li.product_id LEFT JOIN photos ph ON ph.id = li.photo_id WHERE li.report_id = ? ORDER BY li.rowid ASC",
       )
       .bind(report.id)
       .all<StoreReportLineItem>();
@@ -210,7 +215,7 @@ export class ReportsRepository {
           submission.storeId,
           submission.reporterId,
           REPORT_STATUS.syncError,
-          submission.totalAmountCents,
+          0,
           timestamp,
           timestamp,
           errorCode,
@@ -218,12 +223,12 @@ export class ReportsRepository {
     ]);
   }
 
-  createSubmittedReport(submission: Submission, timestamp: string) {
+  createSubmittedReport(submission: PricedSubmission, timestamp: string) {
     return this.db.batch([
       this.db.prepare("INSERT INTO idempotency_keys (key, first_seen_at) VALUES (?, ?)").bind(submission.id, timestamp),
       this.db
         .prepare(
-          "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO reports (id, store_id, reporter_id, status, total_amount, currency, tax_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           submission.id,
@@ -231,6 +236,8 @@ export class ReportsRepository {
           submission.reporterId,
           REPORT_STATUS.pendingSync,
           submission.totalAmountCents,
+          submission.currency,
+          submission.taxAmountCents,
           timestamp,
           timestamp,
         ),
@@ -241,27 +248,41 @@ export class ReportsRepository {
     ]);
   }
 
-  recoverSyncError(submission: Submission, timestamp: string) {
+  recoverSyncError(submission: PricedSubmission, timestamp: string) {
     return this.db.batch([
       ...this.lineItemStatements(submission),
       this.db
-        .prepare("UPDATE reports SET status = ?, validation_error_code = NULL, updated_at = ? WHERE id = ?")
-        .bind(REPORT_STATUS.submitted, timestamp, submission.id),
+        .prepare(
+          "UPDATE reports SET status = ?, total_amount = ?, currency = ?, tax_amount = ?, validation_error_code = NULL, updated_at = ? WHERE id = ?",
+        )
+        .bind(
+          REPORT_STATUS.submitted,
+          submission.totalAmountCents,
+          submission.currency,
+          submission.taxAmountCents,
+          timestamp,
+          submission.id,
+        ),
     ]);
   }
 
-  private lineItemStatements(submission: Submission) {
+  private lineItemStatements(submission: PricedSubmission) {
     return [
       ...submission.items.map((item) =>
         this.db
           .prepare(
-            "INSERT OR IGNORE INTO line_items (id, report_id, product_id, quantity, reason_code, description, photo_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO line_items (id, report_id, product_id, sku_snapshot, product_name_snapshot, quantity, unit_price_cents, tax_rate_bps, line_total_amount, reason_code, description, photo_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           )
           .bind(
             item.id,
             submission.id,
             item.productId,
+            item.sku,
+            item.productName,
             item.quantity,
+            item.unitPriceCents,
+            item.taxRateBps,
+            item.lineTotalAmountCents,
             item.reasonCode,
             item.description,
             item.photoId ?? null,
