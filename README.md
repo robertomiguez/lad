@@ -1,6 +1,6 @@
 # Digital Damage Reporting POC
 
-A runnable Cloudflare Workers proof of concept for offline damage reports, approval routing, escalation, and an asynchronous credit-note write.
+A runnable Cloudflare Workers proof of concept for offline damage reports, approval routing, escalation, and an asynchronous credit-note write. Store users can capture a report with supporting photos while offline; the Worker values it from a server-owned catalogue, routes it through the appropriate approval stages, and writes a simulated credit note asynchronously.
 
 It is deliberately a POC: seeded users replace real SSO, D1 replaces the ERP, and a Durable Object replaces BPMN. The four behaviours to demonstrate are offline-first capture, idempotent sync, approval escalation, and understandable recoverable status.
 
@@ -16,6 +16,18 @@ It is deliberately a POC: seeded users replace real SSO, D1 replaces the ERP, an
 | Duplicate prevention | Client UUID, KV, D1 idempotency table and unique credit note constraint |
 | Photos               | Optional R2 upload independent from report sync                         |
 | ERP write            | Retryable Cloudflare Queue consumer                                     |
+
+## Application routes
+
+| Route                  | Audience                   | Purpose                                                             |
+| ---------------------- | -------------------------- | ------------------------------------------------------------------- |
+| `/login`               | Everyone                   | Start a seeded POC session.                                         |
+| `/app`                 | Store users                | Create, save, submit, and track damage reports.                     |
+| `/reports/:reportId`   | Store users                | View a report's submitted evidence and approval timeline.           |
+| `/approvals`           | Regional and Quality users | Review the approval worklist.                                       |
+| `/approvals/:reportId` | Regional and Quality users | Review submitted evidence before approving or rejecting.            |
+| `/ops`                 | Quality users              | Investigate validation errors, ERP failures, and overdue approvals. |
+| `/hello` and `/health` | Everyone                   | Health check returning a correlation ID.                            |
 
 ## Prerequisites
 
@@ -76,7 +88,7 @@ After choosing Zoe Store, `/app` opens the capture form.
 1. The editor starts disabled. Select **New report**, or choose **Continue editing** on a saved draft, to unlock it.
 2. To pause work, select **Save draft** at any point. Incomplete fields and optional photos remain only on the device; drafts do not sync or enter approval. The editor returns to its disabled state.
 3. To submit a report, add one or more complete line items. Each needs a product, quantity, and reason, plus optional additional details for approvers. A photo is optional. The system records the report timestamp automatically.
-4. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**, and the editor returns to its disabled state.
+4. Select **Submit report**. The same local draft UUID is promoted to **Pending Sync**, and the editor returns to its disabled state. The Worker calculates the total; the browser never supplies one.
 
 **Cancel editing** abandons the current unsaved insert or changes to an open draft and returns the editor to its disabled state. A previously saved draft remains available in **My reports**.
 
@@ -132,7 +144,7 @@ Create reports with these quantities using the simulated catalogue values:
 | 22 × `SKU-200`  | CHF 209.00       | **With Regional Manager**; Rene can approve or reject it.                       |
 | 106 × `SKU-200` | CHF 1,007.00     | Rene must approve first, then it becomes **With Quality Management** for Quinn. |
 
-Sign in as the appropriate approver and open `/approvals`. Each available report has **Approve** and **Reject** controls. Rejection requires a reason, which appears in the store view.
+Sign in as the appropriate approver and open `/approvals`. Select a report reference to inspect its line items, descriptions, and photos before deciding. Each available report has **Approve** and **Reject** controls. Rejection requires a reason, which appears in the store view.
 
 Report details include an approval timeline. It records the submitted time and every Regional or Quality approval/rejection with its date and time.
 
@@ -185,9 +197,7 @@ The Queue retries the mock ERP write. Once the limit is reached, the report beco
 
 The UI does not expose raw implementation errors or enum names.
 
-The reference case study and this POC use the same canonical internal status:
-`credit_note_pending`. It means that the credit note has been approved for
-creation and is waiting for, or being handled by, the ERP-write process.
+`credit_note_pending` means that the credit note has been approved for creation and is waiting for, or being handled by, the ERP-write process.
 
 | Store label                | Internal states                      |
 | -------------------------- | ------------------------------------ |
@@ -209,7 +219,7 @@ Sign in as Quinn Quality and open <http://localhost:8787/ops>. It lists:
 - pending or failed ERP writes; and
 - escalated approvals that remain unresolved.
 
-Every Worker response includes `X-Correlation-Id`. State transitions are emitted as JSON logs with the report ID, correlation ID, actor, from-state, and to-state. Wrangler enables full observability sampling for this POC, so use `npm run logs:tail` during a customer demo to follow the same correlation ID through the Worker, Durable Object, and Queue consumer. Retry defaults live in [src/lib/observability.ts](src/lib/observability.ts).
+Every Worker response includes `X-Correlation-Id`. State transitions are emitted as JSON logs with the report ID, correlation ID, actor, from-state, and to-state. Wrangler enables full observability sampling for this POC, so use `npm run logs:tail` during a customer demo to follow the same correlation ID through the Worker, Durable Object, and Queue consumer. Retry defaults are defined in [src/lib/observability.ts](src/lib/observability.ts).
 
 If the local app does not start:
 
@@ -220,45 +230,30 @@ If the local app does not start:
 
 ## Deploy to Cloudflare
 
-Deploy the whole application to **one Cloudflare Worker**. The Worker serves the
-HTML/API and uploads `public/` as static assets, keeping authentication, Service
-Worker, htmx, and `/api/*` requests on one origin. GitHub Pages is useful for the
-source repository, but is not suitable for hosting this app separately.
+Deploy the whole application to **one Cloudflare Worker**. The Worker serves the HTML/API and uploads `public/` as static assets, keeping authentication, the Service Worker, htmx, and `/api/*` requests on one origin.
 
-1. Authenticate Wrangler: `npx wrangler login`.
-2. Create production resources, using names unique to the Cloudflare account:
+The checked-in `wrangler.toml` targets the configured POC resources. To deploy it, authenticate to the owning Cloudflare account and set its signing secret:
 
-   ```bash
-   npx wrangler d1 create damage-reporting-prod
-   npx wrangler kv namespace create IDEMPOTENCY
-   npx wrangler r2 bucket create damage-reporting-photos-prod
-   npx wrangler queues create erp-write-queue-prod
-   ```
+```bash
+npx wrangler login
+npx wrangler secret put JWT_SECRET
+```
 
-3. Update `wrangler.toml` with the D1 `database_name`/`database_id`, KV namespace
-   `id`, R2 `bucket_name`, and Queue name returned or chosen above. Durable Objects
-   are declared in the same Worker configuration and are provisioned by deployment.
-4. Set the production signing secret: `npx wrangler secret put JWT_SECRET`.
-5. For the first remote setup, create the schema and seed the demo data. On every
-   later deployment, `npm run deploy` applies pending D1 migrations before
-   uploading the Worker, preventing a newer Worker from querying a column that
-   does not yet exist remotely.
+For a separate account or environment, create a D1 database, KV namespace, R2 bucket, and Queue; replace the corresponding IDs and names in `wrangler.toml`; then set `JWT_SECRET` for that Worker. Durable Objects are declared in the Worker configuration and are provisioned on deployment.
 
-   ```bash
-   npm run db:migrate:remote
-   npm run db:seed:remote
-   ```
+Initialize a fresh remote database, validate the bundle, then deploy:
 
-6. Validate the bundle, then migrate and deploy with `npm run deploy`. Wrangler
-   prints the resulting `workers.dev` URL.
+```bash
+npm run db:migrate:remote
+npm run db:seed:remote
+npm run deploy:check
+npm run deploy
+```
 
-   ```bash
-   npm run deploy:check
-   npm run deploy
-   ```
+On later deployments, `npm run deploy` applies pending D1 migrations before uploading the Worker. Wrangler prints the resulting `workers.dev` URL.
 
 Do not deploy `.dev.vars`; it is local-only and ignored by Git.
 
 ## Intentional POC limits
 
-This is not production authentication or ERP integration. It excludes real SSO, password management, rate limiting, multi-tenant isolation, public-holiday calendars, deputy/absence management, and a real ERP API. The hardcoded role claims and mock resources exist solely to demonstrate the workflow safely. The POC SKU price is a controlled stand-in for Comarch order/delivery-line valuation; it is not a production pricing model.
+This is not production authentication or ERP integration. It excludes real SSO, password management, rate limiting, multi-tenant isolation, public-holiday calendars, deputy/absence management, and a real ERP API. The seeded accounts and mock resources exist solely to demonstrate the workflow safely. The POC SKU price is a controlled stand-in for Comarch order/delivery-line valuation; it is not a production pricing model.
