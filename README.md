@@ -53,25 +53,25 @@ The migration and seed commands are safe to run again. Local D1 data is stored i
 
 ### Useful commands
 
-| Command                                        | Purpose                                                         |
-| ---------------------------------------------- | --------------------------------------------------------------- |
-| `npm run dev`                                  | Start the local Worker.                                         |
-| `npm run db:migrate:local`                     | Apply D1 migrations locally.                                    |
-| `npm run db:migrate:remote`                    | Apply D1 migrations remotely before a Worker deployment.        |
-| `npm run db:seed:local`                        | Add the demo stores, users and products.                        |
-| `npm run db:seed:remote`                       | Add or refresh the remote demo users and products.              |
-| `npm run db:simulate:deactivate-product:local` | Make `SKU-200` inactive for the offline-validation demo.        |
-| `npm run db:simulate:reactivate-product:local` | Restore `SKU-200`.                                              |
-| `npm run typecheck`                            | Type-check the Worker.                                          |
-| `npm test`                                     | Run the unit suite and Worker integration tests.                |
-| `npm run lint`                                 | Lint Worker TypeScript under `src/`.                            |
-| `npm run format:check`                         | Verify Prettier formatting across the repository.               |
-| `npm run format`                               | Apply Prettier formatting across the repository.                |
-| `npm run types`                                | Regenerate Cloudflare binding types after Wrangler changes.     |
-| `npm run types:check`                          | Verify generated Cloudflare binding types are current.          |
-| `npm run logs:tail`                            | Tail structured Worker logs as JSON in a second terminal.       |
-| `npm run deploy:check`                         | Bundle and validate the deploy configuration without deploying. |
-| `npm run deploy`                               | Migrate remote D1, then deploy the Worker.                      |
+| Command                                        | Purpose                                                                      |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| `npm run dev`                                  | Start the local Worker.                                                      |
+| `npm run db:migrate:local`                     | Apply D1 migrations locally.                                                 |
+| `npm run db:migrate:remote`                    | Apply D1 migrations remotely before a Worker deployment.                     |
+| `npm run db:seed:local`                        | Add the demo stores, users and products.                                     |
+| `npm run db:seed:remote`                       | Add or refresh the remote demo users and products.                           |
+| `npm run db:simulate:deactivate-product:local` | Temporarily deactivate a local seed product for the offline-validation demo. |
+| `npm run db:simulate:reactivate-product:local` | Restore the local seed product after the demo.                               |
+| `npm run typecheck`                            | Type-check the Worker.                                                       |
+| `npm test`                                     | Run the unit suite and Worker integration tests.                             |
+| `npm run lint`                                 | Lint Worker TypeScript under `src/`.                                         |
+| `npm run format:check`                         | Verify Prettier formatting across the repository.                            |
+| `npm run format`                               | Apply Prettier formatting across the repository.                             |
+| `npm run types`                                | Regenerate Cloudflare binding types after Wrangler changes.                  |
+| `npm run types:check`                          | Verify generated Cloudflare binding types are current.                       |
+| `npm run logs:tail`                            | Tail structured Worker logs as JSON in a second terminal.                    |
+| `npm run deploy:check`                         | Bundle and validate the deploy configuration without deploying.              |
+| `npm run deploy`                               | Migrate remote D1, then deploy the Worker.                                   |
 
 ## Sign in and use the app
 
@@ -108,19 +108,31 @@ The product catalogue stores both the internal SKU and an optional physical barc
 
 The store never enters a total. At synchronisation, the Worker looks up the selected SKUs in its server-owned POC catalogue, calculates the gross CHF total from quantity × unit value, and snapshots the SKU, product name, unit price, tax rate, currency, line total, tax amount, and report total. Approval routing reads that immutable snapshot, so a later catalogue-price change cannot change an in-flight claim.
 
-The seed values are explicitly simulated, gross retail-like values: `SKU-100` is CHF 1.15 (sparkling water 500ml) and `SKU-200` is CHF 9.50 (coffee beans 1kg), both including 2.6% VAT. They provide plausible demonstration thresholds, not a claim about the products' real prices.
+The remote POC catalogue contains the following simulated, gross retail-like values. All prices include 2.6% VAT and are stored in CHF cents.
+
+| SKU        | Product                          | Barcode         | Unit price | Availability |
+| ---------- | -------------------------------- | --------------- | ---------- | ------------ |
+| `10111205` | Raspberry Teddy Eddie            | `7612345678908` | CHF 19.90  | Active       |
+| `10110895` | Dark Teddy Eddie                 | `7612345678917` | CHF 19.90  | Active       |
+| `10109660` | Milk Tablet 36%                  | `7612345678926` | CHF 7.50   | Active       |
+| `10109667` | Single Origin Brazil Tablet 70 % | `7612345678898` | CHF 7.50   | Active       |
+
+The values provide plausible demonstration thresholds, not a claim about the products' real prices.
 
 In production, the same resolver interface derives and snapshots value, currency, tax, source order/delivery, and product data from Comarch. The POC has no Comarch access, so it intentionally uses the catalogue instead of asserting a source-document lookup.
 
 ### Quick barcode test
 
-After applying migrations and seeding the database, sign in as **Zoe Store**, open `/app`, and either use **Scan** or type:
+In the deployed POC, sign in as **Zoe Store**, open `/app`, and either use **Scan** or type one of the active remote-catalogue barcodes:
 
-```text
-7612345678908
-```
+| Barcode         | Expected result                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `7612345678908` | Green **Selected 10111205 — Raspberry Teddy Eddie · CHF 19.90 incl. VAT** message and automatic product selection.           |
+| `7612345678917` | Green **Selected 10110895 — Dark Teddy Eddie · CHF 19.90 incl. VAT** message and automatic product selection.                |
+| `7612345678926` | Green **Selected 10109660 — Milk Tablet 36% · CHF 7.50 incl. VAT** message and automatic product selection.                  |
+| `7612345678898` | Green **Selected 10109667 — Single Origin Brazil Tablet 70 % · CHF 7.50 incl. VAT** message and automatic product selection. |
 
-This seeded EAN maps to `SKU-100` (Sparkling Water 500ml). The app should show a green **Selected SKU-100** message and select the product automatically. The seeded EANs are demo data; replace `products.barcode` with the actual barcode printed on each product. Typing an unknown code produces a clear inline message and does not block manual selection.
+Scanning an unknown code produces a clear inline message and does not block manual selection. The barcodes are POC data; replace `products.barcode` with actual product barcodes for a real integration.
 
 ## Demonstration flows
 
@@ -128,7 +140,7 @@ This seeded EAN maps to `SKU-100` (Sparkling Water 500ml). The app should show a
 
 1. Visit `/app` once while online so the browser can install the Service Worker and cache the app shell.
 2. In browser developer tools, select **Offline** (or disconnect the network).
-3. Create a complete report with an active product such as `SKU-100`, then select **Submit report**.
+3. Create a complete report with an active product such as `10111205`, then select **Submit report**.
 4. It appears immediately as **Pending Sync**. Reloading the page does not remove it. A saved **Draft** remains local after connectivity returns until the store submits it.
 5. Restore connectivity. Background Sync or the browser `online` event posts the existing UUID automatically; the status updates without pressing submit again.
 
@@ -138,11 +150,11 @@ The capture form is present in the cached document, so a fresh offline reload do
 
 Create reports with these quantities using the simulated catalogue values:
 
-| Items           | Calculated total | Expected path                                                                   |
-| --------------- | ---------------- | ------------------------------------------------------------------------------- |
-| 130 × `SKU-100` | CHF 149.50       | Auto-approved, then **Credit Note Processing** and **Completed**.               |
-| 22 × `SKU-200`  | CHF 209.00       | **With Regional Manager**; Rene can approve or reject it.                       |
-| 106 × `SKU-200` | CHF 1,007.00     | Rene must approve first, then it becomes **With Quality Management** for Quinn. |
+| Items            | Calculated total | Expected path                                                                   |
+| ---------------- | ---------------- | ------------------------------------------------------------------------------- |
+| 10 × `10111205`  | CHF 199.00       | Auto-approved, then **Credit Note Processing** and **Completed**.               |
+| 11 × `10110895`  | CHF 218.90       | **With Regional Manager**; Rene can approve or reject it.                       |
+| 134 × `10109660` | CHF 1,005.00     | Rene must approve first, then it becomes **With Quality Management** for Quinn. |
 
 Sign in as the appropriate approver and open `/approvals`. Select a report reference to inspect its line items, descriptions, and photos before deciding. Each available report has **Approve** and **Reject** controls. Rejection requires a reason, which appears in the store view.
 
@@ -170,13 +182,13 @@ An approval or rejection before the alarm fires cancels the escalation. The docu
 
 This proves that browser validation is not authoritative.
 
-1. Start a report using `SKU-200` while offline, but do not reconnect it yet.
+This local-only simulation uses the POC seed catalogue; it does not alter or describe the remote product catalogue above.
+
+1. Start a report using an active product in the local POC while offline, but do not reconnect it yet.
 2. In another terminal run `npm run db:simulate:deactivate-product:local`.
 3. Reconnect the browser.
 4. The server stores a visible, retryable `sync_error` with `product_inactive`; it does not start approval.
 5. Run `npm run db:simulate:reactivate-product:local`, then choose **Retry now** in the store view.
-
-`SKU-300` is already inactive and can be used for a simpler validation-error check.
 
 ### 5. Idempotency
 
